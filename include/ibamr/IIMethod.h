@@ -167,7 +167,20 @@ public:
         CoordinateMappingFcnPtr fcn;
         void* ctx;
     };
-
+    /*!
+     * Evaluates the normal vector at a given quadrature point using either the element normal (old way)
+     * or using phong vectors, which reconstructs the geometry curvature linearly between nodes
+     * 
+     */
+    libMesh::VectorValue<double>
+    evaluateNormalVectors(libMesh::DenseMatrix<double> nodal_normals_mat, unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node,std::unique_ptr<libMesh::QBase> qrule);
+    /*!
+     * Constructs the nodal normal vectors to be later used by evaluateNormalVectors using a weighted average of 
+     * side lengths or face area. Works for both current configuration and reference configuration.
+     * 
+     */
+    libMesh::DenseMatrix<double> 
+    setupPhongNormalVectors(bool isCurrentConfiguration);
     /*!
      * Register relevant part to use discontinuous element type family
      * for the calculation of jumps plus traction quantities. This option should be used for geometries with sharp

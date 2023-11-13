@@ -66,6 +66,7 @@
 #include "libmesh/enum_quadrature_type.h"
 #include "libmesh/enum_xdr_mode.h"
 #include "libmesh/equation_systems.h"
+#include "libmesh/explicit_system.h"
 #include "libmesh/face.h"
 #include "libmesh/fe_base.h"
 #include "libmesh/fe_type.h"
@@ -239,7 +240,13 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration){
     //returns the matrix of area weighted nodal normal vectors to gain a better 
     //evaluation of the normal vector when USE_PHONG_SHADING == true
 
-
+    //for now, leaving part as 0, but will need to iterate over all
+    //the parts of the mesh. Not sure how these are handled, and
+    //its implications on the matrix I create
+    unsigned int part = 0;
+    EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+    const MeshBase& mesh = equation_systems->get_mesh();
+    const unsigned int dim = mesh.mesh_dimension();
     //grab the position vector information for the CURRENT configuration of the mesh
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     const DofMap& X_dof_map = X_system.get_dof_map();
@@ -249,21 +256,17 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration){
     NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
     
     //setup the eqn system for phong
-    EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
-    equation_systems.add_system<ExplicitSystem> ("Normal Vectors");
-    equation_systems.get_system("Normal Vectors").add_variable("n_x",FIRST,LAGRANGE);
-    equation_systems.get_system("Normal Vectors").add_variable("n_y",FIRST,LAGRANGE);
-    equation_systems.get_system("Normal Vectors").add_variable("n_z",FIRST,LAGRANGE);
-    equation_systems.init();
+    equation_systems->add_system<ExplicitSystem> ("Normal Vectors");
+    equation_systems->get_system("Normal Vectors").add_variable("n_x",FIRST,LAGRANGE);
+    equation_systems->get_system("Normal Vectors").add_variable("n_y",FIRST,LAGRANGE);
+    equation_systems->get_system("Normal Vectors").add_variable("n_z",FIRST,LAGRANGE);
+    equation_systems->init();
 
-    //set up reference to mesh, grab relevant attributes
-    const MeshBase& mesh = equation_systems->get_mesh();
-    const unsigned int dim = mesh.mesh_dimension();
     const unsigned int num_elems = mesh.n_elem();
     const unsigned int num_nodes = mesh.n_nodes();
 
     //store ref to dof_map obj as dof_map
-    ExplicitSystem  & system  = equation_systems.get_system<ExplicitSystem> ("Normal Vectors");
+    ExplicitSystem  & system  = equation_systems->get_system<ExplicitSystem> ("Normal Vectors");
     const DofMap & dof_map = system.get_dof_map();
     std::vector<dof_id_type> global_dof_indices;//will need this later for storing weights
 
@@ -341,7 +344,7 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration){
                     get_values_for_interpolation(x_node, *X_ghost_vec, X_dof_indices);
                     double side_length_1 = std::pow((x_node[0][0]-x_node[1][0]),2)+ std::pow((x_node[0][1]-x_node[1][1]),2) + std::pow((x_node[0][2]-x_node[1][2]),2);
                     double side_length_2 = std::pow((x_node[0][0]-x_node[2][0]),2)+ std::pow((x_node[0][1]-x_node[2][1]),2) + std::pow((x_node[0][2]-x_node[2][2]),2);
-                    double side_length_2 = std::pow((x_node[2][0]-x_node[1][0]),2)+ std::pow((x_node[2][1]-x_node[1][1]),2) + std::pow((x_node[2][2]-x_node[1][2]),2);
+                    double side_length_3 = std::pow((x_node[2][0]-x_node[1][0]),2)+ std::pow((x_node[2][1]-x_node[1][1]),2) + std::pow((x_node[2][2]-x_node[1][2]),2);
                     double semi_perimeter = (side_length_1 + side_length_2 + side_length_3)/2.0;
                     measure = std::sqrt(semi_perimeter*(semi_perimeter-side_length_1)*(semi_perimeter-side_length_2)*(semi_perimeter-side_length_3));
                 }
@@ -407,18 +410,23 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration){
     return nodal_normals_mat;
 }
 VectorValue<double>
-IIMethod::evaluateNormalVectors(DenseMatrix<double> nodal_normals_mat, unsigned int qp, bool USE_PHONG_NORMALS, Elem* const elem, boost::multi_array<double, 2> x_node){
+IIMethod::evaluateNormalVectors(libMesh::DenseMatrix<double> nodal_normals_mat, unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, std::unique_ptr<QBase> qrule){
     //this function returns the normal vector at a quadrature point on a particular element
     //either in the reference configuration or current configuration
 
     //we will return this normal vector at the end
     VectorValue<double> n;
 
+
     //get eqn system and basis functions
+    unsigned int part = 0;
+    EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+    const MeshBase& mesh = equation_systems->get_mesh();
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     const DofMap& X_dof_map = X_system.get_dof_map();
     FEDataManager::SystemDofMapCache& X_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
     FEType X_fe_type = X_dof_map.variable_type(0);
+    const unsigned int dim = mesh.mesh_dimension();
     std::unique_ptr<FEBase> fe_X = FEBase::build(dim, X_fe_type);
     const std::vector<double>& JxW = fe_X->get_JxW();
     const std::vector<std::vector<double> >& phi_X = fe_X->get_phi(); //local basis function
@@ -426,6 +434,12 @@ IIMethod::evaluateNormalVectors(DenseMatrix<double> nodal_normals_mat, unsigned 
     dphi_dxi_X[0] = &fe_X->get_dphidxi();
     if (NDIM > 2) dphi_dxi_X[1] = &fe_X->get_dphideta();
     std::array<VectorValue<double>, 2> dx_dxi; //tangent vector 
+
+    //sets up the interpolator object
+    auto fe_data = std::make_shared<IBTK::FEData>("FEData",equation_systems,false);
+    FEDataInterpolation fe_interpolator(mesh.mesh_dimension(),fe_data);
+    fe_interpolator.attachQuadratureRule(&qrule);
+    fe_interpolator.init();
 
     if(USE_PHONG_NORMALS){
         // this is basically X_node but just with normals instead
@@ -443,10 +457,10 @@ IIMethod::evaluateNormalVectors(DenseMatrix<double> nodal_normals_mat, unsigned 
                 normal_node[node_idx][i] = nodal_normals_mat(global_id,i);
             }
         }
-        fe_phong->reinit(elem);
-        fe_interpolator.reinit(elem);
-        fe_interpolator.collectDataForInterpolation(elem);
-        fe_interpolator.interpolate(elem);
+        fe_X->reinit(elem);
+        fe_X.reinit(elem);
+        fe_X.collectDataForInterpolation(elem);
+        fe_X.interpolate(elem);
         interpolate(dx_dxi[0], qp, normal_node, phi_X);
         n = dx_dxi[0];
     }
@@ -458,7 +472,7 @@ IIMethod::evaluateNormalVectors(DenseMatrix<double> nodal_normals_mat, unsigned 
             }
             if (NDIM == 2)
             {
-                dX_dxi[1] = dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
+                dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
             }
             n = dx_dxi[0].cross(dx_dxi[1]);
     }
@@ -1941,8 +1955,8 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
     VectorValue<double> n, N, x, X;
 
     //the following are used for phong shading
-    DenseMatrix<double> current_node_normals_mat = setupPhongNormalVectors(true)//current configuration node normals list
-    DenseMatrix<double> reference_node_normals_mat = setupPhongNormalVectors(false)//reference configuration node normals list
+    DenseMatrix<double> current_node_normals_mat = setupPhongNormalVectors(true);//current configuration node normals list
+    DenseMatrix<double> reference_node_normals_mat = setupPhongNormalVectors(false);//reference configuration node normals list
 
     Pointer<PatchLevel<NDIM> > level =
         d_hierarchy->getPatchLevel(d_fe_data_managers[part]->getFinestPatchLevelNumber());
@@ -2069,8 +2083,8 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
 
-                n = IIMethod::evaluateNormalVectors(current_node_normals_mat, qp, USE_PHONG_NORMALS, elem, x_node);
-                N = IIMethod::evaluateNormalVectors(reference_node_normals_mat, qp, USE_PHONG_NORMALS, elem, X_node);
+                n = IIMethod::evaluateNormalVectors(current_node_normals_mat, qp, USE_PHONG_NORMALS, elem, x_node,qrule);
+                N = IIMethod::evaluateNormalVectors(reference_node_normals_mat, qp, USE_PHONG_NORMALS, elem, X_node,qrule);
                 const double dA = N.norm();
                 N = N.unit();
                 const double da = n.norm();
