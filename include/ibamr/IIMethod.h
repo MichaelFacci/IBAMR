@@ -173,14 +173,14 @@ public:
      * 
      */
     libMesh::VectorValue<double>
-    evaluateNormalVectors(libMesh::DenseMatrix<double> nodal_normals_mat, unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node,std::unique_ptr<libMesh::QBase> qrule);
+    evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node,libMesh::QBase & qrule, unsigned int part);
     /*!
      * Constructs the nodal normal vectors to be later used by evaluateNormalVectors using a weighted average of 
      * side lengths or face area. Works for both current configuration and reference configuration.
      * 
      */
     libMesh::DenseMatrix<double> 
-    setupPhongNormalVectors(bool isCurrentConfiguration);
+    setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part);
     /*!
      * Register relevant part to use discontinuous element type family
      * for the calculation of jumps plus traction quantities. This option should be used for geometries with sharp
@@ -694,7 +694,8 @@ protected:
     double d_exterior_calc_coef = 1.0;
     double d_wss_calc_width = 1.05;
     double d_p_calc_width = 1.3;
-
+    std::vector<libMesh::DenseMatrix<double>> d_reference_nodal_normals;
+    std::vector<libMesh::DenseMatrix<double>> d_current_nodal_normals;
     /*
      * Functions used to compute the initial coordinates of the Lagrangian mesh.
      */
