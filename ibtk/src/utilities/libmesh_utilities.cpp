@@ -14,8 +14,11 @@
 /////////////////////////////// INCLUDES /////////////////////////////////////
 
 #include "ibtk/FECache.h"
+#include "ibtk/FEDataInterpolation.h"
+#include "ibtk/FEDataManager.h"
 #include "ibtk/QuadratureCache.h"
 #include "ibtk/libmesh_utilities.h"
+
 
 #include "tbox/Utilities.h"
 
@@ -24,12 +27,14 @@
 #else
 #include "libmesh/bounding_box.h"
 #endif
+#include "libmesh/dense_matrix.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/elem.h"
 #include "libmesh/enum_elem_type.h"
 #include "libmesh/enum_order.h"
 #include "libmesh/enum_quadrature_type.h"
 #include "libmesh/explicit_system.h"
+#include "libmesh/fe_base.h"
 #include "libmesh/fem_context.h"
 #include "libmesh/id_types.h"
 #include "libmesh/libmesh_config.h"
@@ -69,6 +74,237 @@ namespace IBTK
 /////////////////////////////// STATIC ///////////////////////////////////////
 
 /////////////////////////////// PUBLIC ///////////////////////////////////////
+
+
+libMesh::VectorValue<double>
+evaluateNormalVectors(unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, libMesh::QBase & qrule, libMesh::EquationSystems* equation_systems, IBTK::FEDataInterpolation fe_interpolator, libMesh::DenseMatrix<double> nodal_normals, const std::string COORDS_SYSTEM_NAME){
+    //this function returns the normal vector at a quadrature point on a particular element
+    //either in the reference configuration or current configuration
+    
+    //we will return this normal vector at the end
+    libMesh::VectorValue<double> n;
+
+    //get eqn system and basis functions
+    const libMesh::MeshBase& mesh = equation_systems->get_mesh();
+    libMesh::System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+    const libMesh::DofMap& X_dof_map = X_system.get_dof_map();
+    const unsigned int dim = mesh.mesh_dimension();
+    libMesh::FEType X_fe_type = X_dof_map.variable_type(0);
+    std::unique_ptr<libMesh::FEBase> fe_X = libMesh::FEBase::build(dim, X_fe_type);
+    const std::vector<double>& JxW = fe_X->get_JxW();
+    const std::vector<std::vector<double> >& phi_X = fe_X->get_phi(); //local basis function
+    std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X; //local basis deriv
+    dphi_dxi_X[0] = &fe_X->get_dphidxi();
+    if (NDIM > 2) dphi_dxi_X[1] = &fe_X->get_dphideta();
+    std::array<libMesh::VectorValue<double>, 2> dx_dxi; //tangent vector 
+
+    //sets up the interpolator object
+    //auto fe_data = std::make_shared<IBTK::FEData>("FEData",equation_systems,false);
+    //FEDataInterpolation fe_interpolator(mesh.mesh_dimension(),fe_data);
+    //fe_interpolator.attachQuadratureRule(&qrule);
+    fe_interpolator.attachQuadratureRule(&qrule);
+    fe_interpolator.init();
+
+    if(USE_PHONG_NORMALS){
+        // this is basically X_node but just with normals instead
+        boost::multi_array<double, 2> normal_node(boost::extents[NDIM][3]);//3 rows in 3d, 2 rows in 2d
+        //loop over nodes 
+        for (unsigned int node_idx = 0; node_idx < NDIM; ++node_idx){
+            //get ref to current node
+            const libMesh::Node *node = elem->node_ptr(node_idx);
+
+            //Now find the global index from the local index
+            libMesh::dof_id_type global_id = elem->node_id(node_idx);
+
+            //fill the 2 or 3 endpoint nodes with nodal normals to interpolate, orig
+            for(unsigned int i=0; i < 3; ++i){
+                normal_node[node_idx][i] = nodal_normals(global_id,i);
+            }
+        }
+        fe_X->reinit(elem);
+        fe_interpolator.reinit(elem);
+        fe_interpolator.collectDataForInterpolation(elem);
+        fe_interpolator.interpolate(elem);
+        interpolate(dx_dxi[0], qp, normal_node, phi_X);
+        n = dx_dxi[0];
+    }
+
+    else{
+        for (unsigned int k = 0; k < NDIM - 1; ++k)
+            {
+                interpolate(dx_dxi[k], qp, x_node, *dphi_dxi_X[k]);
+            }
+            if (NDIM == 2)
+            {
+                dx_dxi[1] = libMesh::VectorValue<double>(0.0, 0.0, 1.0);
+            }
+            n = dx_dxi[0].cross(dx_dxi[1]);
+    }
+    return n;
+}
+
+libMesh::DenseMatrix<double> 
+setupPhongNormalVectors(bool isCurrentConfiguration, libMesh::EquationSystems* equation_systems, FEDataManager::SystemDofMapCache& X_dof_map_cache, libMesh::NumericVector<double>* X_ghost_vec, IBTK::FEDataInterpolation fe_interpolator,const std::string COORDS_SYSTEM_NAME){
+    //returns the matrix of area weighted nodal normal vectors to gain a better 
+    //evaluation of the normal vector when USE_PHONG_SHADING == true
+
+    //for now, leaving part as 0, but will need to iterate over all
+    //the parts of the mesh. Not sure how these are handled, and
+    //its implications on the matrix I create
+
+    const libMesh::MeshBase& mesh = equation_systems->get_mesh();
+    const unsigned int dim = mesh.mesh_dimension();
+    //grab the position vector information for the CURRENT configuration of the mesh
+    libMesh::System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+    const libMesh::DofMap& X_dof_map = X_system.get_dof_map();
+    std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);//to be filled later
+    //access the ghost vector, which is the list of nodal locations of the current interface configuration
+    
+    const unsigned int num_elems = mesh.n_elem();
+    const unsigned int num_nodes = mesh.n_nodes();
+
+    //store ref to dof_map obj as dof_map
+    std::vector<libMesh::dof_id_type> global_dof_indices;//will need this later for storing weights
+
+    libMesh::FEType fe_type = X_dof_map.variable_type(0);            
+    std::unique_ptr<libMesh::FEBase> fe (libMesh::FEBase::build(dim,fe_type));
+
+    //Need a one-point G-Q rule to find tangents and normals, since we
+    //have flat triangles (constant normal vectors across elements)
+    //2n-1 order is exact for n nodes, so first order G-Q is needed
+    libMesh::QGauss qrule (dim,libMesh::FIRST);
+
+     // Tell the FE object to use the quad rule
+    fe->attach_quadrature_rule (&qrule);
+
+    // The element Jacovian quadrature weight at each point.
+    const std::vector<libMesh::Real> & JxW = fe->get_JxW();
+
+    //Physical XYZ locations of quadrature pts on the element
+    const std::vector<libMesh::Point> & q_point = fe->get_xyz();
+
+    // The element shape functions evaluated at the quadrature points.
+    // (we dont want this, we need the local coord derivative!)
+    const std::vector<std::vector<libMesh::Real>> & phi = fe->get_phi();
+
+    //local basis derivs
+    std::array<const std::vector<std::vector<double> >*,NDIM - 1> dphi_dxi_X;
+    dphi_dxi_X[0] = &fe->get_dphidxi(); //indexed by qp and basis function node number
+    if (NDIM > 2) dphi_dxi_X[1] = &fe->get_dphideta(); //need this for 3d
+
+    //set up declarations for interpolation for finding normal vector at element face
+    libMesh::VectorValue<double> n, x;
+    boost::multi_array<double, 2> x_node(boost::extents[NDIM][3]);//3 rows in 3d, 2 rows in 2d, points to interpolate from
+    std::array<libMesh::VectorValue<double>, 2> dx_dxi; //local tangent vector to be filled later
+
+    //sets up the interpolator object
+    fe_interpolator.attachQuadratureRule(&qrule);
+    fe_interpolator.init();
+
+    //Rows are nodes, columns are elements. 
+    //Fill with 1/elem weight for each node the element owns.
+    libMesh::DenseMatrix<double> weights(num_nodes,num_elems);
+    libMesh::DenseMatrix<double> elem_normals_mat(num_elems,3);//was originally NDIM, not 3, but all libmesh vectors are 3d with z = 0 for 2d 
+    //elem normal loop------------------------------------------------------------------------------------------------------------------------------
+    int current_elem_index = 0;
+    //Now we want to loop through all the elements and do some interpolating
+    for (const auto & elem : mesh.active_local_element_ptr_range())
+        {
+        //Get the measure of the element in the reference configuration
+        double measure = elem->volume(); 
+
+        //get the global dofs and assign them to global_dof_indices, need this for putting n in the eqn systems
+        //Fills the vector global_dof_indices with the global degree of freedom indices for the element.
+        X_dof_map.dof_indices (elem, global_dof_indices);
+
+        // Number of nodes, each triangle should have 3, in 2d only 2
+        const unsigned int n_nodes = elem->n_nodes();
+
+        //loop over all nodes on the element, make sure we are working with triangles, or 2 nodes for 2d
+        assert((n_nodes == 2 && NDIM == 2) || (n_nodes == 3 && NDIM == 3));
+        for (unsigned int node_idx = 0; node_idx < NDIM; ++node_idx){
+            //get ref to current node
+            const libMesh::Node *node = elem->node_ptr(node_idx);
+
+            //fill the 2 endpoint nodes so we can interpolate later:
+
+            //for current configuration, we need to calculate the triangle's area
+            //using the nodes from X_ghost_vec, not the mesh.
+            if(isCurrentConfiguration){
+                for (unsigned int d = 0; d < NDIM; ++d){
+                    X_dof_map_cache.dof_indices(elem, X_dof_indices[d], d);
+                }
+                if(NDIM == 3){
+                    get_values_for_interpolation(x_node, *X_ghost_vec, X_dof_indices);
+                    double side_length_1 = std::pow((x_node[0][0]-x_node[1][0]),2)+ std::pow((x_node[0][1]-x_node[1][1]),2) + std::pow((x_node[0][2]-x_node[1][2]),2);
+                    double side_length_2 = std::pow((x_node[0][0]-x_node[2][0]),2)+ std::pow((x_node[0][1]-x_node[2][1]),2) + std::pow((x_node[0][2]-x_node[2][2]),2);
+                    double side_length_3 = std::pow((x_node[2][0]-x_node[1][0]),2)+ std::pow((x_node[2][1]-x_node[1][1]),2) + std::pow((x_node[2][2]-x_node[1][2]),2);
+                    double semi_perimeter = (side_length_1 + side_length_2 + side_length_3)/2.0;
+                    measure = std::sqrt(semi_perimeter*(semi_perimeter-side_length_1)*(semi_perimeter-side_length_2)*(semi_perimeter-side_length_3));
+                }
+                else{
+                    measure = std::pow((x_node[0][0]-x_node[1][0]),2)+ std::pow((x_node[0][1]-x_node[1][1]),2) + std::pow((x_node[0][2]-x_node[1][2]),2);
+                }
+            }
+            //for reference configuration, we can get information straight from the mesh's nodes
+            else{
+                for(unsigned int i=0; i < 3; ++i){
+                    x_node[node_idx][i] = (*node)(i);
+                }
+            }
+            //Now find the global index from the local index
+            libMesh::dof_id_type global_id = elem->node_id(node_idx);
+
+            //assign the weights which are smaller for larger sized elems
+            weights(global_id,current_elem_index) = 1.0/measure;
+            }
+        //tell fe which elem we are on
+        fe->reinit(elem);
+        fe_interpolator.reinit(elem);
+        fe_interpolator.collectDataForInterpolation(elem);
+        fe_interpolator.interpolate(elem);
+        //Loop of quadrature pts
+        for (unsigned int qp = 0; qp < qrule.n_points(); ++qp)
+        {
+            //interpolate to get the tangent vector
+            for (unsigned int k = 0; k < NDIM - 1; ++k)
+            {
+                interpolate(dx_dxi[k], qp, x_node, *dphi_dxi_X[k]);
+            }
+            if (NDIM == 2)//rotation by 90 degrees in 2d
+            {
+                dx_dxi[1] = libMesh::VectorValue<double>(0.0, 0.0, 1.0);
+            }
+            //compute normal from tangents 
+            n = dx_dxi[0].cross(dx_dxi[1]);
+            n = n.unit();
+            //Assign the normal vector to the correct row in the matrix of elem normals
+            //also assign it to the equation system solution
+            for (unsigned int j = 0; j < 3; ++j ){  
+                elem_normals_mat(current_elem_index,j) = n(j);
+                //system.solution->set(global_dof_indices[j], n(j));
+            }
+        }
+        current_elem_index+=1;
+    }
+    libMesh::DenseMatrix<double> nodal_normals_mat;
+    nodal_normals_mat.left_multiply(weights);
+
+    //need to normalize every row in the 2-norm 
+    for(unsigned int row = 0; row < num_nodes; ++row){
+        double sum = 0.0;
+        for(unsigned int col = 0; col< 3;++col){
+            sum += pow(nodal_normals_mat(row,col),2);
+        }
+        sum = sqrt(sum);
+        for(unsigned int col = 0; col< 3;++col){
+            nodal_normals_mat(row,col) /= sum;
+        }
+    }
+    return nodal_normals_mat;
+}
+
+
 void
 setup_system_vectors(libMesh::EquationSystems* equation_systems,
                      const std::vector<std::string>& system_names,

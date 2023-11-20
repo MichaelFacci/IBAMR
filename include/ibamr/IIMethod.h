@@ -29,6 +29,7 @@
 #include "SideIndex.h"
 #include "tbox/Pointer.h"
 
+#include "libmesh/dense_matrix.h"
 #include "libmesh/enum_fe_family.h"
 #include "libmesh/enum_order.h"
 #include "libmesh/enum_quadrature_type.h"

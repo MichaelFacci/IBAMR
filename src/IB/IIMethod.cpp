@@ -56,6 +56,7 @@
 
 #include "libmesh/boundary_info.h"
 #include "libmesh/compare_types.h"
+#include "libmesh/dense_matrix.h"
 #include "libmesh/dense_vector.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/edge.h"
