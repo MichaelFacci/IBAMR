@@ -255,22 +255,13 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
     //access the ghost vector, which is the list of nodal locations of the current interface configuration
     NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
     
-    //setup the eqn system for phong
-    equation_systems->add_system<ExplicitSystem> ("Normal Vectors");
-    equation_systems->get_system("Normal Vectors").add_variable("n_x",FIRST,LAGRANGE);
-    equation_systems->get_system("Normal Vectors").add_variable("n_y",FIRST,LAGRANGE);
-    equation_systems->get_system("Normal Vectors").add_variable("n_z",FIRST,LAGRANGE);
-    equation_systems->init();
-
     const unsigned int num_elems = mesh.n_elem();
     const unsigned int num_nodes = mesh.n_nodes();
 
     //store ref to dof_map obj as dof_map
-    ExplicitSystem  & system  = equation_systems->get_system<ExplicitSystem> ("Normal Vectors");
-    const DofMap & dof_map = system.get_dof_map();
     std::vector<dof_id_type> global_dof_indices;//will need this later for storing weights
 
-    FEType fe_type = dof_map.variable_type(0);            
+    FEType fe_type = X_dof_map.variable_type(0);            
     std::unique_ptr<FEBase> fe (FEBase::build(dim,fe_type));
 
     //Need a one-point G-Q rule to find tangents and normals, since we
@@ -320,7 +311,7 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
 
         //get the global dofs and assign them to global_dof_indices, need this for putting n in the eqn systems
         //Fills the vector global_dof_indices with the global degree of freedom indices for the element.
-        dof_map.dof_indices (elem, global_dof_indices);
+        X_dof_map.dof_indices (elem, global_dof_indices);
 
         // Number of nodes, each triangle should have 3, in 2d only 2
         const unsigned int n_nodes = elem->n_nodes();
@@ -387,7 +378,7 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
             //also assign it to the equation system solution
             for (unsigned int j = 0; j < 3; ++j ){  
                 elem_normals_mat(current_elem_index,j) = n(j);
-                system.solution->set(global_dof_indices[j], n(j));
+                //system.solution->set(global_dof_indices[j], n(j));
             }
         }
         current_elem_index+=1;
@@ -409,13 +400,12 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
     return nodal_normals_mat;
 }
 VectorValue<double>
-IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, QBase & qrule,unsigned int part){
+IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, libMesh::QBase & qrule,unsigned int part){
     //this function returns the normal vector at a quadrature point on a particular element
     //either in the reference configuration or current configuration
     
     //we will return this normal vector at the end
     VectorValue<double> n;
-
 
     //get eqn system and basis functions
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
@@ -2930,6 +2920,13 @@ IIMethod::computeLagrangianForce(const double data_time)
         VectorValue<double> F, F_b, F_s, F_qp, N, X, n, x;
         std::array<VectorValue<double>, 2> dX_dxi, dx_dxi;
         std::vector<libMesh::dof_id_type> dof_id_scratch;
+
+        //construct the appropriate nodal normals matricies before 
+        //evaluating normal vectors
+        d_current_nodal_normals[part] = setupPhongNormalVectors(true,part);//current configuration node normals list
+        d_reference_nodal_normals[part] = setupPhongNormalVectors(false,part);//reference configuration node normals list
+
+
         const auto el_begin = mesh.active_local_elements_begin();
         const auto el_end = mesh.active_local_elements_end();
         for (auto el_it = el_begin; el_it != el_end; ++el_it)
@@ -2980,6 +2977,15 @@ IIMethod::computeLagrangianForce(const double data_time)
             {
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
+                bool USE_PHONG_NORMALS = true;//later make this a user input
+                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node,*qrule, part);
+                N = IIMethod::evaluateNormalVectors(false, qp, USE_PHONG_NORMALS, elem, X_node,*qrule, part);
+                const double dA = N.norm();
+                N = N.unit();
+                const double da = n.norm();
+                n = n.unit();
+
+                /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
                 {
                     interpolate(dX_dxi[k], qp, X_node, *dphi_dxi_X[k]);
@@ -2999,7 +3005,7 @@ IIMethod::computeLagrangianForce(const double data_time)
                 n = dx_dxi[0].cross(dx_dxi[1]);
                 const double da = n.norm();
                 n = n.unit();
-
+                */
                 F.zero();
 
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
@@ -4529,6 +4535,7 @@ IIMethod::commonConstructor(const std::string& object_name,
         const MeshBase& mesh = *meshes[part];
         d_reference_nodal_normals.emplace_back(mesh.n_nodes(), 3);
         d_current_nodal_normals.emplace_back(mesh.n_nodes(), 3);
+        
         bool mesh_has_first_order_elems = false;
         bool mesh_has_second_order_elems = false;
         auto el_it = mesh.elements_begin();
