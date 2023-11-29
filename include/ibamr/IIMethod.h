@@ -181,7 +181,7 @@ public:
      * 
      */
     libMesh::DenseMatrix<double> 
-    setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part);
+    setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part,libMesh::NumericVector<double> *x_current_vec);
     /*!
      * Register relevant part to use discontinuous element type family
      * for the calculation of jumps plus traction quantities. This option should be used for geometries with sharp
