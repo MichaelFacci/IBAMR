@@ -248,12 +248,6 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     const DofMap& X_dof_map = X_system.get_dof_map();
     FEDataManager::SystemDofMapCache& X_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
-    //std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);//to be filled later
-    //access the ghost vector, which is the list of nodal locations of the current interface configuration
-    //NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
-
-    NumericVector<double>* X_vec = d_X_half_vecs[part]; //this is for computeLagrangianForce()
-    
 
     const unsigned int num_elems = mesh.n_elem();
     const unsigned int num_nodes = mesh.n_nodes();
@@ -329,7 +323,6 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
         for (unsigned int node_idx = 0; node_idx < NDIM; ++node_idx){
             //get ref to current node
             const Node *node = elem->node_ptr(node_idx);
-
             //for current configuration, we need to calculate the triangle's area
             //using the nodes from *X_vec, not the mesh.
             if(isCurrentConfiguration){
@@ -400,15 +393,19 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
     return nodal_normals_mat;
 }
 VectorValue<double>
-IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, libMesh::QBase &qrule,unsigned int part){
+IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, const std::vector<std::vector<double> >& phi_X, std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X, unsigned int part){
     //this function returns the normal vector at a quadrature point on a particular element
     //either in the reference configuration or current configuration
-    //THE RETURNED NORMAL VECTOR IS ***NOT*** UNIT LENGTH!
+    //despite the fact that we pass in x_node, it is only used if USE_PHONG_NORMALS == false,
+    //otherwise the d_current_nodal_normals or d_reference_nodal_normals is used to fill the normal_node variable
+    //Note: THE RETURNED NORMAL VECTOR IS ***NOT*** UNIT LENGTH!
     
     //we will return this normal vector at the end
     VectorValue<double> n;
 
     //get eqn system and basis functions
+    
+    /*
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
     const MeshBase& mesh = equation_systems->get_mesh();
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
@@ -423,21 +420,18 @@ IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, boo
     std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X; //local basis deriv
     dphi_dxi_X[0] = &fe_X->get_dphidxi();
     if (NDIM > 2) dphi_dxi_X[1] = &fe_X->get_dphideta();
+    */
     std::array<VectorValue<double>, 2> dx_dxi; //tangent vector 
-    //sets up the interpolator object
-    //auto fe_data = std::make_shared<IBTK::FEData>("FEData",equation_systems,false);
-    //FEDataInterpolation fe_interpolator(mesh.mesh_dimension(),fe_data);
-    //fe_interpolator.attachQuadratureRule(&qrule);
+    /*
     FEDataInterpolation fe_interpolator(dim, d_fe_data_managers[part]->getFEData());
     fe_interpolator.attachQuadratureRule(&qrule);
     fe_interpolator.init();
+    */
     if(USE_PHONG_NORMALS){
-        // this is basically X_node but just with normals instead
+        // this is basically x_node but just with normals instead, which will be linearly interpolated on the elem
         boost::multi_array<double, 2> normal_node(boost::extents[NDIM][3]);//3 rows in 3d, 2 rows in 2d
         //loop over nodes 
         for (unsigned int node_idx = 0; node_idx < NDIM; ++node_idx){
-            //get ref to current node
-            const Node *node = elem->node_ptr(node_idx);
 
             //Now find the global index from the local index
             dof_id_type global_id = elem->node_id(node_idx);
@@ -454,11 +448,12 @@ IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, boo
                 }
             }
         }
+        /*
         fe_X->reinit(elem);
         fe_interpolator.reinit(elem);
         fe_interpolator.collectDataForInterpolation(elem);
         fe_interpolator.interpolate(elem);
-
+        */
         interpolate(dx_dxi[0], qp, normal_node, phi_X);
         n = dx_dxi[0];
         std::cout <<"for qp is "<<qp<<", n is:"<<n<<"\n";
@@ -1201,6 +1196,9 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
         X_ghost_vec->close();
 
+        //obtain the nodal normal vectors for phong shading -- only use for P1 elements
+        d_current_nodal_normals[part] = setupPhongNormalVectors(true,part,X_ghost_vec);
+
         // Loop over the patches to interpolate values to the element quadrature
         // points from the grid, then use these values to compute the projection
         // of the interpolated velocity field onto the FE basis functions.
@@ -1377,8 +1375,10 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         }
                     }
                 }
-                for (unsigned int qp = 0; qp < n_qpoints; ++qp)
-                {
+                for (unsigned int qp = 0; qp < n_qpoints; ++qp){
+                    bool USE_PHONG_NORMALS = true;
+                    n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                    /*
                     for (unsigned int l = 0; l < NDIM - 1; ++l)
                     {
                         interpolate(dx_dxi[l], qp, x_node, *dphi_dxi[l]);
@@ -1388,6 +1388,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                     }
                     n = (dx_dxi[0].cross(dx_dxi[1])).unit();
+                    */
+                    n = n.unit();
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
                         n_qp[NDIM * (qp_offset + qp) + d] = n(d);
@@ -1687,7 +1689,9 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                 const size_t n_basis_jump = WSS_in_dof_indices[0].size();
 
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp)
-                {
+                {   bool USE_PHONG_NORMALS = true;
+                    n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                    /*
                     for (unsigned int k = 0; k < NDIM - 1; ++k)
                     {
                         interpolate(dx_dxi[k], qp, x_node, *dphi_dxi[k]);
@@ -1697,6 +1701,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                     }
                     n = (dx_dxi[0].cross(dx_dxi[1])).unit();
+                    */
+                    n = n.unit();
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
                         U(d) = U_qp[NDIM * (qp_offset + qp) + d];
@@ -2083,8 +2089,8 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
                 bool USE_PHONG_NORMALS = true; //later need to make this a user-input
-                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node,*qrule, part);
-                N = IIMethod::evaluateNormalVectors(false, qp, USE_PHONG_NORMALS, elem, X_node,*qrule, part);
+                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node,phi_X, dphi_dxi_X, part);
+                N = IIMethod::evaluateNormalVectors(false, qp, USE_PHONG_NORMALS, elem, X_node,phi_X, dphi_dxi_X, part);
                 const double dA = N.norm();
                 N = N.unit();
                 const double da = n.norm();
@@ -2357,6 +2363,10 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
     VectorValue<double> tau1, tau2, n;
     X_ghost_vec->close();
+
+    //setup nodal normals to be used with the phong vectors in current config
+    d_current_nodal_normals[part] = setupPhongNormalVectors(true,part,X_ghost_vec);
+
     int local_patch_num = 0;
     for (PatchLevel<NDIM>::Iterator p(level); p; p++, ++local_patch_num)
     {
@@ -2402,7 +2412,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
         // Setup vectors to store the values of U and X at the quadrature
         // points.
         //
-        // All this loop is doing is computing the total number of quadraturee
+        // All this loop is doing is computing the total number of quadrature
         // points associated with all of the elements we are currently
         // processing.  That number is n_qp_patch.
         unsigned int n_qp_patch = 0;
@@ -2419,6 +2429,8 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
             n_qp_patch += qrule->n_points();
         }
+
+
 
         if (!n_qp_patch) continue;
         P_jump_qp.resize(n_qp_patch);
@@ -2486,6 +2498,10 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
+                bool USE_PHONG_NORMALS = true;
+                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi_X, part);
+
+                /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
                 {
                     interpolate(dx_dxi[k], qp, x_node, *dphi_dxi_X[k]);
@@ -2495,7 +2511,8 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
                     dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                 }
                 n = (dx_dxi[0].cross(dx_dxi[1])).unit();
-
+                */
+                n = n.unit();
                 for (unsigned int i = 0; i < NDIM; ++i)
                 {
                     for (unsigned int k = 0; k < n_node; ++k)
@@ -2982,8 +2999,8 @@ IIMethod::computeLagrangianForce(const double data_time)
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
                 bool USE_PHONG_NORMALS = true;//later make this a user input
-                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, *qrule, part); //*qrule
-                N = IIMethod::evaluateNormalVectors(false, qp, USE_PHONG_NORMALS, elem, X_node, *qrule, part);
+                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi_X, part); 
+                N = IIMethod::evaluateNormalVectors(false, qp, USE_PHONG_NORMALS, elem, X_node, phi_X, dphi_dxi_X, part);
                 const double dA = N.norm();
                 N = N.unit();
                 const double da = n.norm();
@@ -3692,6 +3709,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                const double /*data_time*/,
                                const unsigned int part)
 {
+    NumericVector<double>* x_current_vec = dynamic_cast<NumericVector<double>*>(&X_ghost_vec);
     // Extract the mesh.
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
     const MeshBase& mesh = equation_systems->get_mesh();
@@ -3737,6 +3755,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
 
     FEType fe_type = X_fe_type;
     std::unique_ptr<FEBase> fe_X = FEBase::build(dim, fe_type);
+    const std::vector<std::vector<double> >& phi_X = fe_X->get_phi();
     std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi;
     dphi_dxi[0] = &fe_X->get_dphidxi();
     if (NDIM > 2) dphi_dxi[1] = &fe_X->get_dphideta();
@@ -3762,6 +3781,11 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
     Pointer<PatchLevel<NDIM> > level = d_hierarchy->getPatchLevel(level_num);
     const IntVector<NDIM>& ratio = level->getRatio();
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
+
+    //obtain the nodal normal vectors for phong shading -- only use for P1 elements
+    d_current_nodal_normals[part] = setupPhongNormalVectors(true,part,x_current_vec);
+    
+
     int local_patch_num = 0;
     for (PatchLevel<NDIM>::Iterator p(level); p; p++, ++local_patch_num)
     {
@@ -3962,6 +3986,10 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 std::vector<libMesh::Point> ref_coords(1, xi);
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_P_jump->reinit(elem, &ref_coords);
+                                bool USE_PHONG_NORMALS = true;
+                                n = IIMethod::evaluateNormalVectors(true, 0, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+
+                                /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
                                 {
                                     interpolate(dx_dxi[l], 0, x_node, *dphi_dxi[l]);
@@ -3971,6 +3999,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                                 }
                                 n = (dx_dxi[0].cross(dx_dxi[1])).unit();
+                                */
+                                n = n.unit();
 
                                 // Make sure we haven't already found this
                                 // intersection.
@@ -4046,6 +4076,9 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 std::vector<libMesh::Point> ref_coords(1, xui);
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_DU_jump->reinit(elem, &ref_coords);
+                                bool USE_PHONG_NORMALS = true;
+                                n = IIMethod::evaluateNormalVectors(true, 0, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                                /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
                                 {
                                     interpolate(dx_dxi[l], 0, x_node, *dphi_dxi[l]);
@@ -4055,7 +4088,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                                 }
                                 n = (dx_dxi[0].cross(dx_dxi[1])).unit();
-
+                                */
+                                n = n.unit();
                                 bool found_same_intersection_point = false;
 
                                 for (int shift = -1; shift <= 1; ++shift)
@@ -4219,6 +4253,10 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     std::vector<libMesh::Point> ref_coords(1, xui);
                                     fe_X->reinit(elem, &ref_coords);
                                     fe_DU_jump->reinit(elem, &ref_coords);
+                                    bool USE_PHONG_NORMALS = true;
+                                    n = IIMethod::evaluateNormalVectors(true, 0, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+
+                                    /*
                                     for (unsigned int l = 0; l < NDIM - 1; ++l)
                                     {
                                         interpolate(dx_dxi[l], 0, x_node, *dphi_dxi[l]);
@@ -4228,7 +4266,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                         dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                                     }
                                     n = (dx_dxi[0].cross(dx_dxi[1])).unit();
-
+                                    */
+                                    n = n.unit();
                                     bool found_same_intersection_point = false;
 
                                     for (int shift = -1; shift <= 1; ++shift)

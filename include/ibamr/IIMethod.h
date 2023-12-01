@@ -174,7 +174,7 @@ public:
      * 
      */
     libMesh::VectorValue<double>
-    evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node,libMesh::QBase & qrule, unsigned int part);
+    evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node,const std::vector<std::vector<double> >& phi_X,std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X, unsigned int part);
     /*!
      * Constructs the nodal normal vectors to be later used by evaluateNormalVectors using a weighted average of 
      * side lengths or face area. Works for both current configuration and reference configuration.
