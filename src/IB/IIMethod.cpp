@@ -456,7 +456,7 @@ IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, boo
         */
         interpolate(dx_dxi[0], qp, normal_node, phi_X);
         n = dx_dxi[0];
-        std::cout <<"for qp is "<<qp<<", n is:"<<n<<"\n";
+        //std::cout <<"for qp is "<<qp<<", n is:"<<n<<"\n";
     }
 
     //if USE_PHONG_NORMALS is false, use the element normal vector (old way)
@@ -1376,8 +1376,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     }
                 }
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp){
-                    bool USE_PHONG_NORMALS = true;
-                    n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                    n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
                     /*
                     for (unsigned int l = 0; l < NDIM - 1; ++l)
                     {
@@ -1689,8 +1688,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                 const size_t n_basis_jump = WSS_in_dof_indices[0].size();
 
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp)
-                {   bool USE_PHONG_NORMALS = true;
-                    n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                {   
+                    n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
                     /*
                     for (unsigned int k = 0; k < NDIM - 1; ++k)
                     {
@@ -2088,9 +2087,9 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
             {
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
-                bool USE_PHONG_NORMALS = true; //later need to make this a user-input
-                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node,phi_X, dphi_dxi_X, part);
-                N = IIMethod::evaluateNormalVectors(false, qp, USE_PHONG_NORMALS, elem, X_node,phi_X, dphi_dxi_X, part);
+
+                n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node,phi_X, dphi_dxi_X, part);
+                N = IIMethod::evaluateNormalVectors(false, qp, d_use_phong_normals, elem, X_node,phi_X, dphi_dxi_X, part);
                 const double dA = N.norm();
                 N = N.unit();
                 const double da = n.norm();
@@ -2498,8 +2497,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
-                bool USE_PHONG_NORMALS = true;
-                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi_X, part);
+                n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi_X, part);
 
                 /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
@@ -2803,7 +2801,7 @@ IIMethod::computeLagrangianForce(const double data_time)
     batch_vec_ghost_update(d_X_half_vecs, INSERT_VALUES, SCATTER_FORWARD);
     for (unsigned part = 0; part < d_num_parts; ++part)
     {
-        std::cout <<"entering lag force function\n";
+        //std::cout <<"entering lag force function\n";
         EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
         MeshBase& mesh = equation_systems->get_mesh();
         const unsigned int dim = mesh.mesh_dimension();
@@ -2998,9 +2996,9 @@ IIMethod::computeLagrangianForce(const double data_time)
             {
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
-                bool USE_PHONG_NORMALS = true;//later make this a user input
-                n = IIMethod::evaluateNormalVectors(true, qp, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi_X, part); 
-                N = IIMethod::evaluateNormalVectors(false, qp, USE_PHONG_NORMALS, elem, X_node, phi_X, dphi_dxi_X, part);
+                
+                n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi_X, part); 
+                N = IIMethod::evaluateNormalVectors(false, qp, d_use_phong_normals, elem, X_node, phi_X, dphi_dxi_X, part);
                 const double dA = N.norm();
                 N = N.unit();
                 const double da = n.norm();
@@ -3986,8 +3984,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 std::vector<libMesh::Point> ref_coords(1, xi);
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_P_jump->reinit(elem, &ref_coords);
-                                bool USE_PHONG_NORMALS = true;
-                                n = IIMethod::evaluateNormalVectors(true, 0, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                                
+                                n = IIMethod::evaluateNormalVectors(true, 0, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
 
                                 /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
@@ -4076,8 +4074,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 std::vector<libMesh::Point> ref_coords(1, xui);
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_DU_jump->reinit(elem, &ref_coords);
-                                bool USE_PHONG_NORMALS = true;
-                                n = IIMethod::evaluateNormalVectors(true, 0, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                                
+                                n = IIMethod::evaluateNormalVectors(true, 0, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
                                 /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
                                 {
@@ -4253,8 +4251,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     std::vector<libMesh::Point> ref_coords(1, xui);
                                     fe_X->reinit(elem, &ref_coords);
                                     fe_DU_jump->reinit(elem, &ref_coords);
-                                    bool USE_PHONG_NORMALS = true;
-                                    n = IIMethod::evaluateNormalVectors(true, 0, USE_PHONG_NORMALS, elem, x_node, phi_X, dphi_dxi, part);
+                                    
+                                    n = IIMethod::evaluateNormalVectors(true, 0, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
 
                                     /*
                                     for (unsigned int l = 0; l < NDIM - 1; ++l)
@@ -4692,6 +4690,9 @@ IIMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
         d_default_interp_spec.use_nodal_quadrature = db->getBool("interp_use_nodal_quadrature");
     else if (db->isBool("IB_use_nodal_quadrature"))
         d_default_interp_spec.use_nodal_quadrature = db->getBool("IB_use_nodal_quadrature");
+
+    if (db->isBool("use_phong_normals"))
+        d_use_phong_normals = db-> getBool("use_phong_normals");
 
     // Spreading settings.
     if (db->isString("spread_delta_fcn"))

@@ -27,8 +27,11 @@
 #include <libmesh/equation_systems.h>
 #include <libmesh/exodusII_io.h>
 #include <libmesh/explicit_system.h>
+#include <libmesh/face_tri.h>
+#include <libmesh/face_tri3.h>
 #include <libmesh/face_quad.h>
 #include <libmesh/face_quad4.h>
+#include <libmesh/gmsh_io.h>
 #include <libmesh/mesh.h>
 #include <libmesh/mesh_function.h>
 #include <libmesh/mesh_generation.h>
@@ -206,6 +209,10 @@ main(int argc, char* argv[])
         Mesh cylinder_mesh_thin(init.comm(), NDIM - 1);
 
         cylinder_mesh_thin.get_boundary_info().clear_boundary_node_ids();
+        libMesh::GmshIO gmsh_io(cylinder_mesh_thin);
+        gmsh_io.read("cylinder.msh");
+        BoundaryInfo& boundary_info = cylinder_mesh_thin.get_boundary_info();
+        /*
         const unsigned int NXi_elem = ceil(L / ds);
         const unsigned int NRi_elem = ceil(M_PI * D / ds);
         int node_id = 0;
@@ -259,6 +266,7 @@ main(int argc, char* argv[])
                 }
             }
         }
+        */
         cylinder_mesh_thin.prepare_for_use();
 
         vector<MeshBase*> meshes(1);

@@ -645,6 +645,7 @@ protected:
     std::vector<bool> d_use_discon_elem_for_jumps = { false };
     std::vector<bool> d_use_tangential_velocity = { false };
     std::vector<bool> d_normalize_pressure_jump = { false };
+    bool d_use_phong_normals = false;
     const unsigned int d_num_parts = 1;
     std::vector<IBTK::FEDataManager*> d_fe_data_managers;
     SAMRAI::hier::IntVector<NDIM> d_ghosts = 0;

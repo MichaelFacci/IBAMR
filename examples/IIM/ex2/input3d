@@ -22,7 +22,7 @@ P_E   = 8* MU * L*U_MAX/(D*D)                                         // externa
 DX0 = H/N                                           // mesh width on coarsest grid level (cm)
 DX  = H/NFINEST                                     // mesh width on finest   grid level (cm)
 MFAC = 2.0                                    // ratio of Lagrangian mesh width to Cartesian mesh width for thin structure
-ELEM_TYPE = "QUAD4"                                 // type of element to use for thin structure discretization
+ELEM_TYPE = "TRI3"                                 // type of element to use for thin structure discretization
 elem_order_thin = "FIRST"                                // finite element order
 
 //Computing velocity profile
@@ -72,6 +72,9 @@ OUTPUT_OMEGA               = TRUE
 OUTPUT_DIV_U               = TRUE
 ENABLE_LOGGING             = TRUE
 
+
+//phong option
+USE_PHONG_NORMALS = TRUE
 
 // Penalty parameter
 KAPPA_S_THIN = 0.002/DT^2 //5000 //0.0025/DT^2 //0.018*DX/DT^2 //1000 //4.0*DX/(DT^2) 
@@ -236,6 +239,7 @@ IIMethod {
    p_calc_width				   = P_CALC_WIDTH
    wss_calc_width			  = WSS_CALC_WIDTH
    min_ghost_cell_width = 6
+   use_phong_normals            = USE_PHONG_NORMALS
 }
 
 
