@@ -1014,6 +1014,30 @@ public:
                              unsigned int max_its = 100);
 
     /*!
+     * \brief Set U to be the stabilized L2 projection of F.
+     */
+    bool computeStabilizedL2Projection(libMesh::NumericVector<double>& U,
+                                       libMesh::NumericVector<double>& F,
+                                       const std::string& system_name,
+                                       double epsilon,
+                                       bool close_U = true,
+                                       bool close_F = true,
+                                       double tol = 1.0e-6,
+                                       unsigned int max_its = 100);
+
+    /*!
+     * \brief Set U to be the smoothed L2 projection of F.
+     */
+    bool computeSmoothedL2Projection(libMesh::NumericVector<double>& U,
+                                     libMesh::NumericVector<double>& F,
+                                     const std::string& system_name,
+                                     double epsilon,
+                                     bool close_U = true,
+                                     bool close_F = true,
+                                     double tol = 1.0e-6,
+                                     unsigned int max_its = 100);
+
+    /*!
      * Update the quadrature rule for the current element.  If the provided
      * qrule is already configured appropriately, it is not modified.
      *

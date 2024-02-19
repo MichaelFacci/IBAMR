@@ -698,6 +698,8 @@ protected:
     double d_p_calc_width = 1.3;
     std::vector<libMesh::DenseMatrix<double>> d_reference_nodal_normals;
     std::vector<libMesh::DenseMatrix<double>> d_current_nodal_normals;
+    double d_force_stabilization_eps = 0.0, d_velocity_stabilization_eps = 0.0;
+
     /*
      * Functions used to compute the initial coordinates of the Lagrangian mesh.
      */
