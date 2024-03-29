@@ -1,0 +1,5 @@
+P=00000:Program abort called in file ``/home/mfacci/sfw/ibamr/IBAMR/src/IB/IIMethod.cpp'' at line 4595
+P=00000:ERROR MESSAGE: 
+P=00000:IIMethod::IIMethod():
+P=00000:  each FE mesh part must contain only FIRST order elements or only SECOND order elements
+P=00000:
