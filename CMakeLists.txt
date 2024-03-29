@@ -16,6 +16,14 @@
 # ---------------------------------------------------------------------------- #
 CMAKE_MINIMUM_REQUIRED(VERSION 3.15.0)
 
+# Do this before project() to skip the compiler config process
+IF("${CMAKE_BINARY_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
+  MESSAGE(FATAL_ERROR "This project does not support in-source builds.
+    Please create a subfolder and use `cmake ..` inside it.
+    NOTE: cmake will now create CMakeCache.txt and CMakeFiles/*.
+          You must delete them, or cmake will refuse to work.")
+ENDIF()
+
 PROJECT(IBAMR
   DESCRIPTION "Software infrastructure for the IB method with adaptively-refined grids"
   VERSION ${IBAMR_VERSION}
@@ -1320,3 +1328,20 @@ IF(IBAMR_ENABLE_TESTING)
   ADD_SUBDIRECTORY(tests)
 ENDIF()
 ADD_SUBDIRECTORY(examples)
+
+# ---------------------------------------------------------------------------- #
+#                               6: Other targets                               #
+# ---------------------------------------------------------------------------- #
+
+# Targets for indenting recently changed and all files
+ADD_CUSTOM_TARGET(indent
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMAND ./scripts/formatting/indent
+  COMMENT "Indenting recently changed IBAMR files"
+  )
+
+ADD_CUSTOM_TARGET(indent-all
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMAND ./scripts/formatting/indent-all
+  COMMENT "Indenting all IBAMR files"
+  )

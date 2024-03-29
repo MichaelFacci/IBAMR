@@ -679,6 +679,7 @@ protected:
     std::vector<IBTK::FEDataManager::SpreadSpec> d_spread_spec;
     bool d_use_pressure_jump_conditions = false;
     bool d_use_velocity_jump_conditions = false;
+    bool d_use_u_interp_correction = false;
     bool d_compute_fluid_traction = false;
     bool d_perturb_fe_mesh_nodes = true;
     std::vector<libMesh::FEFamily> d_fe_family;
@@ -699,6 +700,8 @@ protected:
     std::vector<libMesh::DenseMatrix<double>> d_reference_nodal_normals;
     std::vector<libMesh::DenseMatrix<double>> d_current_nodal_normals;
     double d_force_stabilization_eps = 0.0, d_velocity_stabilization_eps = 0.0;
+    double d_fuzzy_tol = 1e-5;
+    double d_mesh_perturb_tol = 1e-4;
 
     /*
      * Functions used to compute the initial coordinates of the Lagrangian mesh.

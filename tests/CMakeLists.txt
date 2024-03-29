@@ -96,6 +96,8 @@ SETUP_2D(adv_diff adv_diff_convec_opers.cpp)
 SETUP_2D(adv_diff adv_diff_regridding.cpp)
 SETUP_2D(adv_diff bp_adv_diff_01.cpp)
 SETUP_2D(adv_diff bp_adv_diff_02.cpp)
+SETUP_2D(adv_diff bp_adv_diff_zero_flux.cpp)
+SETUP_2D(adv_diff bp_free_convection.cpp)
 
 SETUP_3D(adv_diff adv_diff_01.cpp)
 SETUP_3D(adv_diff adv_diff_02.cpp)
@@ -153,6 +155,8 @@ SETUP_3D(navier_stokes stokes_operator.cpp)
 SETUP(physical_boundary extrapolation_01.cpp IBAMR2d)
 SETUP_2D(physical_boundary 01.cpp)
 SETUP_3D(physical_boundary 01.cpp)
+SETUP_2D(physical_boundary staggered_helper.cpp)
+SETUP_3D(physical_boundary staggered_helper.cpp)
 
 # refine:
 SETUP_2D(refine rt0_refine_01.cpp)
@@ -271,6 +275,7 @@ SETUP_2D(IBTK vc_viscous_solver.cpp)
 SETUP_2D(IBTK helmholtz.cpp)
 SETUP_2D(IBTK marker_points_01.cpp)
 SETUP_2D(IBTK marker_points_02.cpp)
+SETUP_2D(IBTK cf_interface.cpp)
 
 IF(${IBAMR_HAVE_LIBMESH})
   SETUP_3D(IBTK bounding_boxes_01.cpp)
@@ -290,6 +295,7 @@ SETUP_3D(IBTK prolongation_mat.cpp)
 SETUP_3D(IBTK samraidatacache_01.cpp)
 SETUP_3D(IBTK vc_viscous_solver.cpp)
 SETUP_3D(IBTK helmholtz.cpp)
+SETUP_3D(IBTK cf_interface.cpp)
 
 ADD_CUSTOM_COMMAND(TARGET tests
   POST_BUILD

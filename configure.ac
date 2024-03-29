@@ -234,6 +234,7 @@ AC_CONFIG_FILES([
   examples/adv_diff/ex5/Makefile
   examples/adv_diff/ex6/Makefile
   examples/adv_diff/ex7/Makefile
+  examples/adv_diff/ex8/Makefile
   examples/advect/Makefile
   examples/complex_fluids/Makefile
   examples/complex_fluids/ex0/Makefile
@@ -290,6 +291,7 @@ AC_CONFIG_FILES([
   src/level_set/fortran/Makefile
   src/navier_stokes/Makefile
   src/navier_stokes/fortran/Makefile
+  src/phase_change/Makefile
   src/utilities/Makefile
   src/wave_generation/Makefile
   tests/attest.conf

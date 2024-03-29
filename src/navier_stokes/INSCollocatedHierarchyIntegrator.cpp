@@ -1051,11 +1051,11 @@ INSCollocatedHierarchyIntegrator::preprocessIntegrateHierarchy(const double curr
 } // preprocessIntegrateHierarchy
 
 void
-INSCollocatedHierarchyIntegrator::integrateHierarchy(const double current_time,
-                                                     const double new_time,
-                                                     const int cycle_num)
+INSCollocatedHierarchyIntegrator::integrateHierarchySpecialized(const double current_time,
+                                                                const double new_time,
+                                                                const int cycle_num)
 {
-    INSHierarchyIntegrator::integrateHierarchy(current_time, new_time, cycle_num);
+    INSHierarchyIntegrator::integrateHierarchySpecialized(current_time, new_time, cycle_num);
     const int coarsest_ln = 0;
     const int finest_ln = d_hierarchy->getFinestLevelNumber();
     const double dt = new_time - current_time;
@@ -1435,8 +1435,6 @@ INSCollocatedHierarchyIntegrator::integrateHierarchy(const double current_time,
         }
     }
 
-    // Execute any registered callbacks.
-    executeIntegrateHierarchyCallbackFcns(current_time, new_time, cycle_num);
     return;
 } // integrateHierarchy
 
@@ -1449,42 +1447,12 @@ INSCollocatedHierarchyIntegrator::postprocessIntegrateHierarchy(const double cur
     INSHierarchyIntegrator::postprocessIntegrateHierarchy(
         current_time, new_time, skip_synchronize_new_state_data, num_cycles);
 
-    const int coarsest_ln = 0;
-    const int finest_ln = d_hierarchy->getFinestLevelNumber();
-    const double dt = new_time - current_time;
-
     // Synchronize new state data.
     if (!skip_synchronize_new_state_data)
     {
         if (d_enable_logging)
             plog << d_object_name << "::postprocessIntegrateHierarchy(): synchronizing updated data\n";
         synchronizeHierarchyData(NEW_DATA);
-    }
-
-    // Determine the CFL number.
-    if (!d_parent_integrator)
-    {
-        double cfl_max = 0.0;
-        PatchCellDataOpsReal<NDIM, double> patch_cc_ops;
-        for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
-        {
-            Pointer<PatchLevel<NDIM> > level = d_hierarchy->getPatchLevel(ln);
-            for (PatchLevel<NDIM>::Iterator p(level); p; p++)
-            {
-                Pointer<Patch<NDIM> > patch = level->getPatch(p());
-                const Box<NDIM>& patch_box = patch->getBox();
-                const Pointer<CartesianPatchGeometry<NDIM> > pgeom = patch->getPatchGeometry();
-                const double* const dx = pgeom->getDx();
-                const double dx_min = *(std::min_element(dx, dx + NDIM));
-                Pointer<CellData<NDIM, double> > u_cc_new_data = patch->getPatchData(d_U_new_idx);
-                double u_max = 0.0;
-                u_max = patch_cc_ops.maxNorm(u_cc_new_data, patch_box);
-                cfl_max = std::max(cfl_max, u_max * dt / dx_min);
-            }
-        }
-        cfl_max = IBTK_MPI::maxReduction(cfl_max);
-        if (d_enable_logging)
-            plog << d_object_name << "::postprocessIntegrateHierarchy(): CFL number = " << cfl_max << "\n";
     }
 
     // Compute max |Omega|_2.
@@ -1749,6 +1717,9 @@ INSCollocatedHierarchyIntegrator::resetHierarchyConfigurationSpecialized(
     d_convective_op_needs_init = true;
     d_velocity_solver_needs_init = true;
     d_pressure_solver_needs_init = true;
+
+    // Set the initial current CFL number.
+    updateCurrentCFLNumber(d_U_current_idx, getMaximumTimeStepSize());
     return;
 } // resetHierarchyConfigurationSpecialized
 
