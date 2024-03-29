@@ -230,6 +230,16 @@ public:
      * \note This is only recommended for enclosed bodies.
      */
     void registerPressureJumpNormalization(unsigned int part = 0);
+    
+     /*!
+     * Register relevant part for which we would like to calculate traction forces
+     */
+    void registerTractionCalc(unsigned int part = 0);
+    
+    /*!
+     * Register relevant part for use with direct forcing
+     */
+    void registerPartForDirectForcing(unsigned int part = 0);
 
     /*!
      * Register the (optional) function used to initialize the physical
@@ -383,7 +393,7 @@ public:
     /*!
      * A wrapper to compute the interfacial pressure and fluid traction from the jumps.
      */
-    void calculateInterfacialFluidForces(int p_data_idx, double data_time);
+    void calculateInterfacialFluidForces(int p_data_idx, double data_time, unsigned int part);
 
     /*!
      * Advance the positions of the Lagrangian structure using the forward Euler
@@ -644,6 +654,8 @@ protected:
     std::vector<libMesh::EquationSystems*> d_equation_systems;
     std::vector<bool> d_use_discon_elem_for_jumps = { false };
     std::vector<bool> d_use_tangential_velocity = { false };
+    std::vector<bool> d_compute_fluid_traction = { false };
+    std::vector<bool> d_use_direct_forcing = { false };
     std::vector<bool> d_normalize_pressure_jump = { false };
     bool d_use_phong_normals = false;
     const unsigned int d_num_parts = 1;
@@ -679,8 +691,6 @@ protected:
     std::vector<IBTK::FEDataManager::SpreadSpec> d_spread_spec;
     bool d_use_pressure_jump_conditions = false;
     bool d_use_velocity_jump_conditions = false;
-    bool d_use_u_interp_correction = false;
-    bool d_compute_fluid_traction = false;
     bool d_perturb_fe_mesh_nodes = true;
     std::vector<libMesh::FEFamily> d_fe_family;
     std::vector<libMesh::FEFamily> d_viscous_jump_fe_family;
@@ -693,7 +703,6 @@ protected:
     std::vector<libMesh::QuadratureType> d_default_quad_type;
     std::vector<libMesh::Order> d_default_quad_order;
     bool d_use_consistent_mass_matrix = true;
-    bool d_use_direct_forcing = false;
     double d_exterior_calc_coef = 1.0;
     double d_wss_calc_width = 1.05;
     double d_p_calc_width = 1.3;
