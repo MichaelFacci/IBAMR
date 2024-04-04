@@ -2569,6 +2569,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
                 TBOX_ERROR(d_object_name << "::IIMethod():\n"
                                          << " the pressure interpolation ghost width hasn't beeen properly set"
                                          << std::endl);
+                                         
             const double* const x_o = &x_out_qp[NDIM * k];
             const hier::Index<NDIM> op = IndexUtilities::getCellIndex(
                 x_o, x_lower_ghost, x_upper_ghost, patch_geom->getDx(), ghost_box.lower(), ghost_box.upper());
