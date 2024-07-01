@@ -180,7 +180,8 @@ public:
      * side lengths or face area. Works for both current configuration and reference configuration.
      * 
      */
-    libMesh::DenseMatrix<double> 
+    //libMesh::DenseMatrix<double> 
+    void
     setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part,libMesh::NumericVector<double> *x_current_vec);
     /*!
      * Register relevant part to use discontinuous element type family
@@ -699,6 +700,9 @@ protected:
     double d_p_calc_width = 1.3;
     std::vector<libMesh::DenseMatrix<double>> d_reference_nodal_normals;
     std::vector<libMesh::DenseMatrix<double>> d_current_nodal_normals;
+    std::vector<libMesh::DenseMatrix<double>> d_weights;
+    std::vector<libMesh::DenseMatrix<double>> d_elem_normals;
+   
     double d_force_stabilization_eps = 0.0, d_velocity_stabilization_eps = 0.0;
     double d_fuzzy_tol = 1e-5;
     double d_mesh_perturb_tol = 1e-4;

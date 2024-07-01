@@ -54,6 +54,7 @@
 #include "tbox/SAMRAI_MPI.h"
 #include "tbox/Utilities.h"
 
+
 #include "libmesh/boundary_info.h"
 #include "libmesh/compare_types.h"
 #include "libmesh/dense_matrix.h"
@@ -236,11 +237,12 @@ IIMethod::getFEDataManager(const unsigned int part) const
     return d_fe_data_managers[part];
 } // getFEDataManager
 
-DenseMatrix<double> 
-IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part,NumericVector<double> *x_current_vec){
+//DenseMatrix<double> 
+void
+IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part, NumericVector<double> *x_current_vec){
     //returns the matrix of area weighted nodal normal vectors to gain a better 
     //evaluation of the normal vector when USE_PHONG_SHADING == true
-
+//std::cout <<"in phong \n";
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
     const MeshBase& mesh = equation_systems->get_mesh();
     const unsigned int dim = mesh.mesh_dimension();
@@ -292,12 +294,14 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
 
     //Rows are nodes, columns are elements. 
     //Fill with 1/elem weight for each node the element owns.
-    DenseMatrix<double> weights(num_nodes,num_elems);
-    DenseMatrix<double> elem_normals_mat(num_elems,3);//was originally NDIM, not 3, but all libmesh vectors are 3d with z = 0 for 2d 
+
+    //no longer need these because using class variables
+    //DenseMatrix<double> weights(num_nodes,num_elems);
+    //DenseMatrix<double> elem_normals_mat(num_elems,3);//was originally NDIM, not 3, but all libmesh vectors are 3d with z = 0 for 2d 
     //elem normal loop------------------------------------------------------------------------------------------------------------------------------
     int current_elem_index = 0;
     //Now we want to loop through all the elements and do some interpolating
-
+    //std::cout <<"before elem loop\n";
     for (const auto & elem : mesh.active_local_element_ptr_range())
         {
         const auto& X_dof_indices = X_dof_map_cache.dof_indices(elem);  
@@ -326,15 +330,23 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
             //for current configuration, we need to calculate the triangle's area
             //using the nodes from *X_vec, not the mesh.
             if(isCurrentConfiguration){
-
-                get_values_for_interpolation(z_node, *x_current_vec, X_dof_indices);
+		    
+		    //std::cout<< "X_dof_indices: " <<X_dof_indices.size();
+		     //std::cout<< "X_dof_indices: " <<X_dof_indices[0][0];
+	     	    //std::cin.get();
+		    get_values_for_interpolation(z_node, *x_current_vec, X_dof_indices);
                 if(NDIM == 3){
-                    double side_length_1 = std::sqrt(std::pow((z_node[0][0]-z_node[1][0]),2)+ std::pow((z_node[0][1]-z_node[1][1]),2) + std::pow((z_node[0][2]-z_node[1][2]),2));
-                    double side_length_2 = std::sqrt(std::pow((z_node[0][0]-z_node[2][0]),2)+ std::pow((z_node[0][1]-z_node[2][1]),2) + std::pow((z_node[0][2]-z_node[2][2]),2));
-                    double side_length_3 = std::sqrt(std::pow((z_node[2][0]-z_node[1][0]),2)+ std::pow((z_node[2][1]-z_node[1][1]),2) + std::pow((z_node[2][2]-z_node[1][2]),2));
-                    double semi_perimeter = (side_length_1 + side_length_2 + side_length_3)/2.0;
-                    measure = std::sqrt(semi_perimeter*(semi_perimeter-side_length_1)*(semi_perimeter-side_length_2)*(semi_perimeter-side_length_3));
-                }
+                    //double side_length_1 = std::sqrt(std::pow((z_node[0][0]-z_node[1][0]),2)+ std::pow((z_node[0][1]-z_node[1][1]),2) + std::pow((z_node[0][2]-z_node[1][2]),2));
+                    //double side_length_2 = std::sqrt(std::pow((z_node[0][0]-z_node[2][0]),2)+ std::pow((z_node[0][1]-z_node[2][1]),2) + std::pow((z_node[0][2]-z_node[2][2]),2));
+                    //double side_length_3 = std::sqrt(std::pow((z_node[2][0]-z_node[1][0]),2)+ std::pow((z_node[2][1]-z_node[1][1]),2) + std::pow((z_node[2][2]-z_node[1][2]),2));
+                    //double semi_perimeter = (side_length_1 + side_length_2 + side_length_3)/2.0;
+                    //measure = std::sqrt(semi_perimeter*(semi_perimeter-side_length_1)*(semi_perimeter-side_length_2)*(semi_perimeter-side_length_3));
+                    double centroid_x = (z_node[0][0]+z_node[1][0]+z_node[2][0])/3;
+                    double centroid_y = (z_node[0][1]+z_node[1][1]+z_node[2][1])/3;
+                    double centroid_z = (z_node[0][2]+z_node[1][2]+z_node[2][2])/3;
+                    measure = std::sqrt(std::pow(centroid_x-z_node[node_idx][0],2) + std::pow(centroid_y-z_node[node_idx][1],2)+ std::pow(centroid_y-z_node[node_idx][2],2));
+	       	}
+
                 else{
                     measure = std::sqrt(std::pow((z_node[0][0]-z_node[1][0]),2)+ std::pow((z_node[0][1]-z_node[1][1]),2));
                 }
@@ -344,12 +356,13 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
                 for(unsigned int i=0; i < NDIM; ++i){
                     z_node[node_idx][i] = (*node)(i);
                 }
+		measure = std::sqrt(std::pow((elem->centroid())(0) - (*node)(0),2) + std::pow((elem->centroid())(1) - (*node)(1),2)+std::pow((elem->centroid())(2) - (*node)(2),2));
             }
             //Now find the global index from the local index
             dof_id_type global_id = elem->node_id(node_idx);
 
             //assign the weights which are smaller for larger sized elems
-            weights(global_id,current_elem_index) = 1.0/measure;
+            d_weights[part](global_id,current_elem_index) = 1.0/measure;
             }
 
         //Loop of quadrature pts
@@ -370,16 +383,48 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
             //Assign the normal vector to the correct row in the matrix of elem normals
             //also assign it to the equation system solution
             for (unsigned int j = 0; j < 3; ++j ){  
-                elem_normals_mat(current_elem_index,j) = n(j);
+                d_elem_normals[part](current_elem_index,j) = n(j);
                 //system.solution->set(global_dof_indices[j], n(j));
             }
         }
         current_elem_index+=1;
     }
-    DenseMatrix<double> nodal_normals_mat = elem_normals_mat;
-    nodal_normals_mat.left_multiply(weights);
+    //no longer need this 
+    DenseMatrix<double> nodal_normals_mat = d_elem_normals[part];
+    nodal_normals_mat.left_multiply(d_weights[part]);
+
+    if(isCurrentConfiguration){
+        d_current_nodal_normals[part] = nodal_normals_mat;
+        for(unsigned int row = 0; row < num_nodes; ++row){
+            double sum = 0.0;
+            for(unsigned int col = 0; col< 3;++col){
+                sum += pow(d_current_nodal_normals[part](row,col),2);
+            }
+            sum = sqrt(sum);
+            for(unsigned int col = 0; col< 3;++col){
+                d_current_nodal_normals[part](row,col) /= sum;
+            }
+        }
+    }
+
+
+    else{
+        d_reference_nodal_normals[part] = nodal_normals_mat;
+        for(unsigned int row = 0; row < num_nodes; ++row){
+            double sum = 0.0;
+            for(unsigned int col = 0; col< 3;++col){
+                sum += pow(d_reference_nodal_normals[part](row,col),2);
+            }
+            sum = sqrt(sum);
+            for(unsigned int col = 0; col< 3;++col){
+                d_reference_nodal_normals[part](row,col) /= sum;
+            }
+        }    
+    }
+
 
     //need to normalize every row in the 2-norm 
+    /*
     for(unsigned int row = 0; row < num_nodes; ++row){
         double sum = 0.0;
         for(unsigned int col = 0; col< 3;++col){
@@ -390,13 +435,14 @@ IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part
             nodal_normals_mat(row,col) /= sum;
         }
     }
-    return nodal_normals_mat;
+    */
+    return;
 }
 VectorValue<double>
 IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, const std::vector<std::vector<double> >& phi_X, std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X, unsigned int part){
     //this function returns the normal vector at a quadrature point on a particular element
     //either in the reference configuration or current configuration
-    //despite the fact that we pass in x_node, it is only used if USE_PHONG_NORMALS == false,
+    //despite the fact that we pass in x_node, it is only used if USE_HONG_NORMALS == false,
     //otherwise the d_current_nodal_normals or d_reference_nodal_normals is used to fill the normal_node variable
     //Note: THE RETURNED NORMAL VECTOR IS ***NOT*** UNIT LENGTH!
     
@@ -1210,7 +1256,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
         //obtain the nodal normal vectors for phong shading -- only use for P1 elements
         if(d_use_phong_normals){
-            d_current_nodal_normals[part] = setupPhongNormalVectors(true,part,X_ghost_vec);
+            setupPhongNormalVectors(true,part,X_ghost_vec);
         }
         // Loop over the patches to interpolate values to the element quadrature
         // points from the grid, then use these values to compute the projection
@@ -1387,7 +1433,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     }
                 }
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp){
-                    n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
+                    n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi, part);
                     /*
                     for (unsigned int l = 0; l < NDIM - 1; ++l)
                     {
@@ -1691,7 +1737,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp)
                 {   
-                    n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
+                    n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi, part);
                     /*
                     for (unsigned int k = 0; k < NDIM - 1; ++k)
                     {
@@ -1839,8 +1885,8 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
     copy_and_synch(*X_vec, *X_ghost_vec);
     //the following are used for phong shading
     if(d_use_phong_normals){
-        d_current_nodal_normals[part] = setupPhongNormalVectors(true,part,X_ghost_vec);//current configuration node normals list
-        d_reference_nodal_normals[part] = setupPhongNormalVectors(false,part,X_ghost_vec);//reference configuration node normals list
+        setupPhongNormalVectors(true,part,X_ghost_vec);//current configuration node normals list
+        setupPhongNormalVectors(false,part,X_ghost_vec);//reference configuration node normals list
     }
     WSS_in_vec = d_WSS_in_half_vecs[part];
     copy_and_synch(*WSS_in_vec, *WSS_in_ghost_vec);
@@ -2091,8 +2137,8 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
 
-                n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node,phi_X, dphi_dxi_X, part);
-                N = IIMethod::evaluateNormalVectors(false, qp, d_use_phong_normals, elem, X_node,phi_X, dphi_dxi_X, part);
+                n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node,phi_X, dphi_dxi_X, part);
+                N = IIMethod::evaluateNormalVectors(false, qp,false, elem, X_node,phi_X, dphi_dxi_X, part);
                 const double dA = N.norm();
                 N = N.unit();
                 const double da = n.norm();
@@ -2368,7 +2414,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
     //setup nodal normals to be used with the phong vectors in current config
     if(d_use_phong_normals){
-        d_current_nodal_normals[part] = setupPhongNormalVectors(true,part,X_ghost_vec);
+        setupPhongNormalVectors(true,part,X_ghost_vec);
     }
     int local_patch_num = 0;
     for (PatchLevel<NDIM>::Iterator p(level); p; p++, ++local_patch_num)
@@ -2501,7 +2547,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
-                n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi_X, part);
+                n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi_X, part);
 
                 /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
@@ -2948,8 +2994,8 @@ IIMethod::computeLagrangianForce(const double data_time)
         //construct the appropriate nodal normals matricies before 
         //evaluating normal vectors
         if(d_use_phong_normals){
-            d_reference_nodal_normals[part] = setupPhongNormalVectors(false,part, X_vec);//reference configuration node normals list
-            d_current_nodal_normals[part] = setupPhongNormalVectors(true,part, X_vec);//current configuration node normals list
+            setupPhongNormalVectors(false,part, X_vec);//reference configuration node normals list
+            setupPhongNormalVectors(true,part, X_vec);//current configuration node normals list
         }
 
         const auto el_begin = mesh.active_local_elements_begin();
@@ -3788,7 +3834,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
 
     //obtain the nodal normal vectors for phong shading -- only use for P1 elements
     if(d_use_phong_normals){
-        d_current_nodal_normals[part] = setupPhongNormalVectors(true,part,x_current_vec);
+        setupPhongNormalVectors(true,part,x_current_vec);
     }
 
     int local_patch_num = 0;
@@ -3992,7 +4038,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_P_jump->reinit(elem, &ref_coords);
                                 
-                                n = IIMethod::evaluateNormalVectors(true, 0, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
+                                n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
 
                                 /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
@@ -4082,7 +4128,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_DU_jump->reinit(elem, &ref_coords);
                                 
-                                n = IIMethod::evaluateNormalVectors(true, 0, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
+                                n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
                                 /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
                                 {
@@ -4259,7 +4305,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     fe_X->reinit(elem, &ref_coords);
                                     fe_DU_jump->reinit(elem, &ref_coords);
                                     
-                                    n = IIMethod::evaluateNormalVectors(true, 0, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi, part);
+                                    n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
 
                                     /*
                                     for (unsigned int l = 0; l < NDIM - 1; ++l)
@@ -4583,7 +4629,9 @@ IIMethod::commonConstructor(const std::string& object_name,
         const MeshBase& mesh = *meshes[part];
         d_reference_nodal_normals.emplace_back(mesh.n_nodes(), 3);
         d_current_nodal_normals.emplace_back(mesh.n_nodes(), 3);
-        
+        d_weights.emplace_back(mesh.n_nodes(), mesh.n_elem());
+        d_elem_normals.emplace_back(mesh.n_elem(), 3);
+
         bool mesh_has_first_order_elems = false;
         bool mesh_has_second_order_elems = false;
         auto el_it = mesh.elements_begin();
