@@ -28,7 +28,7 @@
 #include "PatchHierarchy.h"
 #include "SideIndex.h"
 #include "tbox/Pointer.h"
-
+#include "libmesh/dense_matrix.h"
 #include "libmesh/enum_fe_family.h"
 #include "libmesh/enum_order.h"
 #include "libmesh/enum_quadrature_type.h"
@@ -167,7 +167,21 @@ public:
         CoordinateMappingFcnPtr fcn;
         void* ctx;
     };
-
+/*!
+     * Evaluates the normal vector at a given quadrature point using either the element normal (old way)
+     * or using phong vectors, which reconstructs the geometry curvature linearly between nodes
+     * 
+     */
+    libMesh::VectorValue<double>
+    evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node,const std::vector<std::vector<double> >& phi_X,std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X, unsigned int part);
+    /*!
+     * Constructs the nodal normal vectors to be later used by evaluateNormalVectors using a weighted average of 
+     * side lengths or face area. Works for both current configuration and reference configuration.
+     * 
+     */
+    //libMesh::DenseMatrix<double> 
+    void
+    setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part,libMesh::NumericVector<double> *x_current_vec);
     /*!
      * Register relevant part to use discontinuous element type family (L2_LAGRANGE or MONOMIAL)
      * for the calculation of jump/traction quantities. This option should be used for geometries with
@@ -608,6 +622,7 @@ protected:
     std::vector<bool> d_use_discon_elem_for_jumps = { false };
     std::vector<bool> d_use_tangential_velocity = { false };
     std::vector<bool> d_normalize_pressure_jump = { false };
+    bool d_use_phong_normals = false;
     const unsigned int d_num_parts = 1;
     std::vector<IBTK::FEDataManager*> d_fe_data_managers;
     SAMRAI::hier::IntVector<NDIM> d_ghosts = 0;
@@ -656,6 +671,10 @@ protected:
     double d_exterior_calc_coef = 1.0;
     double d_wss_calc_width = 1.05;
     double d_p_calc_width = 1.3;
+    std::vector<libMesh::DenseMatrix<double>> d_reference_nodal_normals;
+    std::vector<libMesh::DenseMatrix<double>> d_current_nodal_normals;
+    std::vector<libMesh::DenseMatrix<double>> d_weights;
+    std::vector<libMesh::DenseMatrix<double>> d_elem_normals;
 
     /*
      * Functions used to compute the initial coordinates of the Lagrangian mesh.

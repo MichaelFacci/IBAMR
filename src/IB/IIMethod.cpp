@@ -56,6 +56,7 @@
 
 #include "libmesh/boundary_info.h"
 #include "libmesh/compare_types.h"
+#include "libmesh/dense_matrix.h"
 #include "libmesh/dense_vector.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/edge.h"
@@ -66,6 +67,7 @@
 #include "libmesh/enum_quadrature_type.h"
 #include "libmesh/enum_xdr_mode.h"
 #include "libmesh/equation_systems.h"
+#include "libmesh/explicit_system.h"
 #include "libmesh/face.h"
 #include "libmesh/fe_base.h"
 #include "libmesh/fe_type.h"
@@ -233,6 +235,288 @@ IIMethod::getFEDataManager(const unsigned int part) const
     TBOX_ASSERT(part < d_num_parts);
     return d_fe_data_managers[part];
 } // getFEDataManager
+void
+IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part, NumericVector<double> *x_current_vec){
+    //returns the matrix of area weighted nodal normal vectors to gain a better 
+    //evaluation of the normal vector when USE_PHONG_SHADING == true
+//std::cout <<"in phong \n";
+    EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+    const MeshBase& mesh = equation_systems->get_mesh();
+    const unsigned int dim = mesh.mesh_dimension();
+    //grab the position vector information for the CURRENT configuration of the mesh
+    System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+    const DofMap& X_dof_map = X_system.get_dof_map();
+    FEDataManager::SystemDofMapCache& X_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
+
+    const unsigned int num_elems = mesh.n_elem();
+    const unsigned int num_nodes = mesh.n_nodes();
+
+    //store ref to dof_map obj as dof_map
+    std::vector<dof_id_type> global_dof_indices;//will need this later for storing weights
+
+    FEType fe_type = X_dof_map.variable_type(0);            
+    std::unique_ptr<FEBase> fe (FEBase::build(dim,fe_type));
+
+    //Need a one-point G-Q rule to find tangents and normals, since we
+    //have flat triangles (constant normal vectors across elements)
+    //2n-1 order is exact for n nodes, so first order G-Q is needed
+    QGauss qrule (dim,SECOND);
+
+     // Tell the FE object to use the quad rule
+    fe->attach_quadrature_rule (&qrule);
+
+    // The element Jacovian quadrature weight at each point.
+    const std::vector<Real> & JxW = fe->get_JxW();
+
+    //Physical XYZ locations of quadrature pts on the element
+    const std::vector<libMesh::Point> & q_point = fe->get_xyz();
+
+    // The element shape functions evaluated at the quadrature points.
+    // (we dont want this, we need the local coord derivative!)
+    const std::vector<std::vector<Real>> & phi = fe->get_phi();
+
+    //local basis derivs
+    std::array<const std::vector<std::vector<double> >*,NDIM - 1> dphi_dxi_X;
+    dphi_dxi_X[0] = &fe->get_dphidxi(); //indexed by qp and basis function node number
+    if (NDIM > 2) dphi_dxi_X[1] = &fe->get_dphideta(); //need this for 3d
+
+    //set up declarations for interpolation for finding normal vector at element face
+    VectorValue<double> n, x;
+    boost::multi_array<double, 2> z_node(boost::extents[NDIM][NDIM]);//3 rows in 3d, 2 rows in 2d, points to interpolate from     (boost::extents[NDIM][3])
+    std::array<VectorValue<double>, 2> dx_dxi; //local tangent vector to be filled later
+    //sets up the interpolator object
+    FEDataInterpolation fe_interpolator(mesh.mesh_dimension(), d_fe_data_managers[part]->getFEData());
+    fe_interpolator.attachQuadratureRule(&qrule);
+    fe_interpolator.init();
+
+    //Rows are nodes, columns are elements. 
+    //Fill with 1/elem weight for each node the element owns.
+
+    //no longer need these because using class variables
+    //DenseMatrix<double> weights(num_nodes,num_elems);
+    //DenseMatrix<double> elem_normals_mat(num_elems,3);//was originally NDIM, not 3, but all libmesh vectors are 3d with z = 0 for 2d 
+    //elem normal loop------------------------------------------------------------------------------------------------------------------------------
+    int current_elem_index = 0;
+    //Now we want to loop through all the elements and do some interpolating
+    //std::cout <<"before elem loop\n";
+    for (const auto & elem : mesh.active_local_element_ptr_range())
+        {
+        const auto& X_dof_indices = X_dof_map_cache.dof_indices(elem);  
+        //Get the measure of the element in the reference configuration
+        double measure = elem->volume(); 
+
+        //get the global dofs and assign them to global_dof_indices, need this for putting n in the eqn systems
+        //Fills the vector global_dof_indices with the global degree of freedom indices for the element.
+        X_dof_map.dof_indices (elem, global_dof_indices);
+
+        // Number of nodes, each triangle should have 3, in 2d only 2
+        const unsigned int n_nodes = elem->n_nodes();
+
+        //tell fe which elem we are on
+        fe->reinit(elem);
+        fe_interpolator.reinit(elem);
+        fe_interpolator.collectDataForInterpolation(elem);
+        fe_interpolator.interpolate(elem);
+        //loop over all nodes on the element, make sure we are working with triangles, or 2 nodes for 2d
+        assert((n_nodes == 2 && NDIM == 2) || (n_nodes == 3 && NDIM == 3));
+        //get_values_for_interpolation(x_node, *X_vec, X_dof_indices);
+        //std::cout<<std::size(x_node) <<" is the size of xnode.\n";
+        for (unsigned int node_idx = 0; node_idx < NDIM; ++node_idx){
+            //get ref to current node
+            const Node *node = elem->node_ptr(node_idx);
+            //for current configuration, we need to calculate the triangle's area
+            //using the nodes from *X_vec, not the mesh.
+            if(isCurrentConfiguration){
+		    
+		    //std::cout<< "X_dof_indices: " <<X_dof_indices.size();
+		     //std::cout<< "X_dof_indices: " <<X_dof_indices[0][0];
+	     	    //std::cin.get();
+		    get_values_for_interpolation(z_node, *x_current_vec, X_dof_indices);
+                if(NDIM == 3){
+                    //double side_length_1 = std::sqrt(std::pow((z_node[0][0]-z_node[1][0]),2)+ std::pow((z_node[0][1]-z_node[1][1]),2) + std::pow((z_node[0][2]-z_node[1][2]),2));
+                    //double side_length_2 = std::sqrt(std::pow((z_node[0][0]-z_node[2][0]),2)+ std::pow((z_node[0][1]-z_node[2][1]),2) + std::pow((z_node[0][2]-z_node[2][2]),2));
+                    //double side_length_3 = std::sqrt(std::pow((z_node[2][0]-z_node[1][0]),2)+ std::pow((z_node[2][1]-z_node[1][1]),2) + std::pow((z_node[2][2]-z_node[1][2]),2));
+                    //double semi_perimeter = (side_length_1 + side_length_2 + side_length_3)/2.0;
+                    //measure = std::sqrt(semi_perimeter*(semi_perimeter-side_length_1)*(semi_perimeter-side_length_2)*(semi_perimeter-side_length_3));
+                    double centroid_x = (z_node[0][0]+z_node[1][0]+z_node[2][0])/3;
+                    double centroid_y = (z_node[0][1]+z_node[1][1]+z_node[2][1])/3;
+                    double centroid_z = (z_node[0][2]+z_node[1][2]+z_node[2][2])/3;
+                    measure = std::sqrt(std::pow(centroid_x-z_node[node_idx][0],2) + std::pow(centroid_y-z_node[node_idx][1],2)+ std::pow(centroid_y-z_node[node_idx][2],2));
+	       	}
+
+                else{
+                    measure = std::sqrt(std::pow((z_node[0][0]-z_node[1][0]),2)+ std::pow((z_node[0][1]-z_node[1][1]),2));
+                }
+            }
+            //for reference configuration, we can get information straight from the mesh's nodes
+            else{
+                for(unsigned int i=0; i < NDIM; ++i){
+                    z_node[node_idx][i] = (*node)(i);
+                }
+		measure = std::sqrt(std::pow((elem->centroid())(0) - (*node)(0),2) + std::pow((elem->centroid())(1) - (*node)(1),2)+std::pow((elem->centroid())(2) - (*node)(2),2));
+            }
+            //Now find the global index from the local index
+            dof_id_type global_id = elem->node_id(node_idx);
+
+            //assign the weights which are smaller for larger sized elems
+            d_weights[part](global_id,current_elem_index) = 1.0/measure;
+            }
+
+        //Loop of quadrature pts
+        for (unsigned int qp = 0; qp < qrule.n_points(); ++qp)
+        {
+            //interpolate to get the tangent vector
+            for (unsigned int k = 0; k < NDIM - 1; ++k)
+            {
+                interpolate(dx_dxi[k], qp, z_node, *dphi_dxi_X[k]);
+            }
+            if (NDIM == 2)//rotation by 90 degrees in 2d
+            {
+                dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
+            }
+            //compute normal from tangents 
+            n = dx_dxi[0].cross(dx_dxi[1]);
+            n = n.unit();
+            //Assign the normal vector to the correct row in the matrix of elem normals
+            //also assign it to the equation system solution
+            for (unsigned int j = 0; j < 3; ++j ){  
+                d_elem_normals[part](current_elem_index,j) = n(j);
+                //system.solution->set(global_dof_indices[j], n(j));
+            }
+        }
+        current_elem_index+=1;
+    }
+    //no longer need this 
+    DenseMatrix<double> nodal_normals_mat = d_elem_normals[part];
+    nodal_normals_mat.left_multiply(d_weights[part]);
+
+    if(isCurrentConfiguration){
+        d_current_nodal_normals[part] = nodal_normals_mat;
+        for(unsigned int row = 0; row < num_nodes; ++row){
+            double sum = 0.0;
+            for(unsigned int col = 0; col< 3;++col){
+                sum += pow(d_current_nodal_normals[part](row,col),2);
+            }
+            sum = sqrt(sum);
+            for(unsigned int col = 0; col< 3;++col){
+                d_current_nodal_normals[part](row,col) /= sum;
+            }
+        }
+    }
+
+
+    else{
+        d_reference_nodal_normals[part] = nodal_normals_mat;
+        for(unsigned int row = 0; row < num_nodes; ++row){
+            double sum = 0.0;
+            for(unsigned int col = 0; col< 3;++col){
+                sum += pow(d_reference_nodal_normals[part](row,col),2);
+            }
+            sum = sqrt(sum);
+            for(unsigned int col = 0; col< 3;++col){
+                d_reference_nodal_normals[part](row,col) /= sum;
+            }
+        }    
+    }
+
+
+    //need to normalize every row in the 2-norm 
+    /*
+    for(unsigned int row = 0; row < num_nodes; ++row){
+        double sum = 0.0;
+        for(unsigned int col = 0; col< 3;++col){
+            sum += pow(nodal_normals_mat(row,col),2);
+        }
+        sum = sqrt(sum);
+        for(unsigned int col = 0; col< 3;++col){
+            nodal_normals_mat(row,col) /= sum;
+        }
+    }
+    */
+    return;
+}
+VectorValue<double>
+IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, const std::vector<std::vector<double> >& phi_X, std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X, unsigned int part){
+    //this function returns the normal vector at a quadrature point on a particular element
+    //either in the reference configuration or current configuration
+    //despite the fact that we pass in x_node, it is only used if USE_PHONG_NORMALS == false,
+    //otherwise the d_current_nodal_normals or d_reference_nodal_normals is used to fill the normal_node variable
+    //Note: THE RETURNED NORMAL VECTOR IS ***NOT*** UNIT LENGTH!
+    
+    //we will return this normal vector at the end
+    VectorValue<double> n;
+
+    //get eqn system and basis functions
+    
+    /*
+    EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+    const MeshBase& mesh = equation_systems->get_mesh();
+    System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+    const DofMap& X_dof_map = X_system.get_dof_map();
+    FEDataManager::SystemDofMapCache& X_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
+    FEType X_fe_type = X_dof_map.variable_type(0);
+    const unsigned int dim = mesh.mesh_dimension();
+    std::unique_ptr<FEBase> fe_X = FEBase::build(dim, X_fe_type);
+    fe_X->attach_quadrature_rule(&qrule);
+    const std::vector<double>& JxW = fe_X->get_JxW();
+    const std::vector<std::vector<double> >& phi_X = fe_X->get_phi(); //local basis function
+    std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X; //local basis deriv
+    dphi_dxi_X[0] = &fe_X->get_dphidxi();
+    if (NDIM > 2) dphi_dxi_X[1] = &fe_X->get_dphideta();
+    */
+    std::array<VectorValue<double>, 2> dx_dxi; //tangent vector 
+    /*
+    FEDataInterpolation fe_interpolator(dim, d_fe_data_managers[part]->getFEData());
+    fe_interpolator.attachQuadratureRule(&qrule);
+    fe_interpolator.init();
+    */
+    if(USE_PHONG_NORMALS){
+        // this is basically x_node but just with normals instead, which will be linearly interpolated on the elem
+        boost::multi_array<double, 2> normal_node(boost::extents[NDIM][3]);//3 rows in 3d, 2 rows in 2d
+        //loop over nodes 
+        for (unsigned int node_idx = 0; node_idx < NDIM; ++node_idx){
+
+            //Now find the global index from the local index
+            dof_id_type global_id = elem->node_id(node_idx);
+
+            //fill the 2 or 3 endpoint nodes with nodal normals to interpolate
+            if(isCurrentConfiguration){
+                for(unsigned int i=0; i < 3; ++i){
+                    normal_node[node_idx][i] = (d_current_nodal_normals[part])(global_id,i);
+                }
+            }
+            else{
+                for(unsigned int i=0; i < 3; ++i){
+                    normal_node[node_idx][i] = (d_reference_nodal_normals[part])(global_id,i);
+                }
+            }
+        }
+        /*
+        fe_X->reinit(elem);
+        fe_interpolator.reinit(elem);
+        fe_interpolator.collectDataForInterpolation(elem);
+        fe_interpolator.interpolate(elem);
+        */
+        interpolate(dx_dxi[0], qp, normal_node, phi_X);
+        n = dx_dxi[0];
+        //std::cout <<"for qp is "<<qp<<", n is:"<<n<<"\n";
+    }
+
+    //if USE_PHONG_NORMALS is false, use the element normal vector (old way)
+    else{
+        for (unsigned int k = 0; k < NDIM - 1; ++k)
+            {
+                interpolate(dx_dxi[k], qp, x_node, *dphi_dxi_X[k]);
+            }
+            if (NDIM == 2)
+            {
+                dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
+            }
+            n = dx_dxi[0].cross(dx_dxi[1]);
+    }
+    return n;
+}
+
 
 void
 IIMethod::registerDisconElemFamilyForJumps(const unsigned int part)
@@ -852,7 +1136,10 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         const std::vector<std::vector<double> >& phi_DU_jump = fe_DU_jump->get_phi();
 
         X_ghost_vec->close();
-
+        //obtain the nodal normal vectors for phong shading -- only use for P1 elements
+        if(d_use_phong_normals){
+            setupPhongNormalVectors(true,part,X_ghost_vec);
+        }
         // Loop over the patches to interpolate values to the element quadrature
         // points from the grid, then use these values to compute the projection
         // of the interpolated velocity field onto the FE basis functions.
@@ -1025,8 +1312,9 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         }
                     }
                 }
-                for (unsigned int qp = 0; qp < n_qpoints; ++qp)
-                {
+                for (unsigned int qp = 0; qp < n_qpoints; ++qp){
+                n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi, part);
+                    /*
                     for (unsigned int l = 0; l < NDIM - 1; ++l)
                     {
                         interpolate(dx_dxi[l], qp, x_node, *dphi_dxi[l]);
@@ -1036,6 +1324,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                     }
                     n = (dx_dxi[0].cross(dx_dxi[1])).unit();
+                    */
+                    n = n.unit();
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
                         n_qp[NDIM * (qp_offset + qp) + d] = n(d);
@@ -1336,6 +1626,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp)
                 {
+                    n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi, part);
+                    /*
                     for (unsigned int k = 0; k < NDIM - 1; ++k)
                     {
                         interpolate(dx_dxi[k], qp, x_node, *dphi_dxi[k]);
@@ -1345,6 +1637,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                     }
                     n = (dx_dxi[0].cross(dx_dxi[1])).unit();
+                    */
+                    n = n.unit();
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
                         U(d) = U_qp[NDIM * (qp_offset + qp) + d];
@@ -1478,7 +1772,11 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
     }
     NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
     copy_and_synch(*X_vec, *X_ghost_vec);
-
+    //the following are used for phong shading
+    if(d_use_phong_normals){
+        setupPhongNormalVectors(true,part,X_ghost_vec);//current configuration node normals list
+        setupPhongNormalVectors(false,part,X_ghost_vec);//reference configuration node normals list
+    }
     WSS_in_vec = d_WSS_in_half_vecs[part];
     copy_and_synch(*WSS_in_vec, *WSS_in_ghost_vec);
 
@@ -1707,6 +2005,14 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
             {
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
+
+                n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node,phi_X, dphi_dxi_X, part);
+                N = IIMethod::evaluateNormalVectors(false, qp, false, elem, X_node,phi_X, dphi_dxi_X, part);
+                const double dA = N.norm();
+                N = N.unit();
+                const double da = n.norm();
+                n = n.unit();
+                /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
                 {
                     interpolate(dX_dxi[k], qp, X_node, *dphi_dxi_X[k]);
@@ -1725,7 +2031,7 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
                 n = dx_dxi[0].cross(dx_dxi[1]);
                 const double da = n.norm();
                 n = n.unit();
-
+                */
                 for (unsigned int i = 0; i < NDIM; ++i)
                 {
                     for (unsigned int k = 0; k < n_node; ++k)
@@ -1967,6 +2273,10 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
     VectorValue<double> tau1, tau2, n;
     X_ghost_vec->close();
+    //setup nodal normals to be used with the phong vectors in current config
+    if(d_use_phong_normals){
+        setupPhongNormalVectors(true,part,X_ghost_vec);
+    }
     int local_patch_num = 0;
     for (PatchLevel<NDIM>::Iterator p(level); p; p++, ++local_patch_num)
     {
@@ -2013,7 +2323,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
         // Setup vectors to store the values of U and X at the quadrature
         // points.
         //
-        // All this loop is doing is computing the total number of quadraturee
+        // All this loop is doing is computing the total number of quadrature
         // points associated with all of the elements we are currently
         // processing.  That number is n_qp_patch.
         unsigned int n_qp_patch = 0;
@@ -2096,6 +2406,9 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
+                n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi_X, part);
+
+                /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
                 {
                     interpolate(dx_dxi[k], qp, x_node, *dphi_dxi_X[k]);
@@ -2105,7 +2418,8 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
                     dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                 }
                 n = (dx_dxi[0].cross(dx_dxi[1])).unit();
-
+                */
+                n = n.unit();
                 for (unsigned int i = 0; i < NDIM; ++i)
                 {
                     for (unsigned int k = 0; k < n_node; ++k)
@@ -2540,6 +2854,14 @@ IIMethod::computeLagrangianForce(const double data_time)
         VectorValue<double> F, F_b, F_s, F_qp, N, X, n, x;
         std::array<VectorValue<double>, 2> dX_dxi, dx_dxi;
         std::vector<libMesh::dof_id_type> dof_id_scratch;
+
+        //construct the appropriate nodal normals matricies before 
+        //evaluating normal vectors
+        if(d_use_phong_normals){
+            setupPhongNormalVectors(false,part, X_vec);//reference configuration node normals list
+            setupPhongNormalVectors(true,part, X_vec);//current configuration node normals list
+        }
+
         const auto el_begin = mesh.active_local_elements_begin();
         const auto el_end = mesh.active_local_elements_end();
         for (auto el_it = el_begin; el_it != el_end; ++el_it)
@@ -2590,6 +2912,14 @@ IIMethod::computeLagrangianForce(const double data_time)
             {
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
+                n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi_X, part); 
+                N = IIMethod::evaluateNormalVectors(false, qp, d_use_phong_normals, elem, X_node, phi_X, dphi_dxi_X, part);
+                const double dA = N.norm();
+                N = N.unit();
+                const double da = n.norm();
+                n = n.unit();
+
+                /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
                 {
                     interpolate(dX_dxi[k], qp, X_node, *dphi_dxi_X[k]);
@@ -2609,7 +2939,7 @@ IIMethod::computeLagrangianForce(const double data_time)
                 n = dx_dxi[0].cross(dx_dxi[1]);
                 const double da = n.norm();
                 n = n.unit();
-
+                */
                 F.zero();
 
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
@@ -3293,6 +3623,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                const double /*data_time*/,
                                const unsigned int part)
 {
+    NumericVector<double>* x_current_vec = dynamic_cast<NumericVector<double>*>(&X_ghost_vec);
     // Extract the mesh.
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
     const MeshBase& mesh = equation_systems->get_mesh();
@@ -3338,6 +3669,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
 
     FEType fe_type = X_fe_type;
     std::unique_ptr<FEBase> fe_X = FEBase::build(dim, fe_type);
+    const std::vector<std::vector<double> >& phi_X = fe_X->get_phi();
     std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi;
     dphi_dxi[0] = &fe_X->get_dphidxi();
     if (NDIM > 2) dphi_dxi[1] = &fe_X->get_dphideta();
@@ -3359,6 +3691,10 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
     Pointer<PatchLevel<NDIM> > level = d_hierarchy->getPatchLevel(level_num);
     const IntVector<NDIM>& ratio = level->getRatio();
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
+        //obtain the nodal normal vectors for phong shading -- only use for P1 elements
+    if(d_use_phong_normals){
+        setupPhongNormalVectors(true,part,x_current_vec);
+    }
     int local_patch_num = 0;
     for (PatchLevel<NDIM>::Iterator p(level); p; p++, ++local_patch_num)
     {
@@ -3559,6 +3895,9 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 std::vector<libMesh::Point> ref_coords(1, xi);
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_P_jump->reinit(elem, &ref_coords);
+                                n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
+
+                                /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
                                 {
                                     interpolate(dx_dxi[l], 0, x_node, *dphi_dxi[l]);
@@ -3568,6 +3907,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                                 }
                                 n = (dx_dxi[0].cross(dx_dxi[1])).unit();
+                                */
+                                n = n.unit();
 
                                 // Make sure we haven't already found this
                                 // intersection.
@@ -3643,6 +3984,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 std::vector<libMesh::Point> ref_coords(1, xui);
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_P_jump->reinit(elem, &ref_coords);
+                                n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
+                                /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
                                 {
                                     interpolate(dx_dxi[l], 0, x_node, *dphi_dxi[l]);
@@ -3652,7 +3995,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                                 }
                                 n = (dx_dxi[0].cross(dx_dxi[1])).unit();
-
+                                */
+                                n = n.unit();
                                 bool found_same_intersection_point = false;
 
                                 for (int shift = -1; shift <= 1; ++shift)
@@ -3816,6 +4160,9 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     std::vector<libMesh::Point> ref_coords(1, xui);
                                     fe_X->reinit(elem, &ref_coords);
                                     fe_P_jump->reinit(elem, &ref_coords);
+                                    n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
+
+                                    /*
                                     for (unsigned int l = 0; l < NDIM - 1; ++l)
                                     {
                                         interpolate(dx_dxi[l], 0, x_node, *dphi_dxi[l]);
@@ -3825,7 +4172,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                         dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
                                     }
                                     n = (dx_dxi[0].cross(dx_dxi[1])).unit();
-
+                                    */
+                                    n = n.unit();
                                     bool found_same_intersection_point = false;
 
                                     for (int shift = -1; shift <= 1; ++shift)
@@ -4129,6 +4477,10 @@ IIMethod::commonConstructor(const std::string& object_name,
     for (unsigned int part = 0; part < d_num_parts; ++part)
     {
         const MeshBase& mesh = *meshes[part];
+        d_reference_nodal_normals.emplace_back(mesh.n_nodes(), 3);
+        d_current_nodal_normals.emplace_back(mesh.n_nodes(), 3);
+        d_weights.emplace_back(mesh.n_nodes(), mesh.n_elem());
+        d_elem_normals.emplace_back(mesh.n_elem(), 3);
         bool mesh_has_first_order_elems = false;
         bool mesh_has_second_order_elems = false;
         auto el_it = mesh.elements_begin();
@@ -4236,6 +4588,8 @@ IIMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
         d_default_interp_spec.use_nodal_quadrature = db->getBool("interp_use_nodal_quadrature");
     else if (db->isBool("IB_use_nodal_quadrature"))
         d_default_interp_spec.use_nodal_quadrature = db->getBool("IB_use_nodal_quadrature");
+    if (db->isBool("use_phong_normals"))
+        d_use_phong_normals = db-> getBool("use_phong_normals");
 
     // Spreading settings.
     if (db->isString("spread_delta_fcn"))
