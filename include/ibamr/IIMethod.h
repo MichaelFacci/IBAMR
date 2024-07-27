@@ -168,6 +168,24 @@ public:
         CoordinateMappingFcnPtr fcn;
         void* ctx;
     };
+
+
+    /*!
+     * Returns either the current configuration (at possibly different times in the timestep)
+     * or the reference configuration with a numeric vector
+     * 
+     */
+    libMesh::NumericVector<double>* 
+    getMeshCoordinatesNumeric(bool isCurrentConfiguration,std::string time,unsigned int part);
+    
+    /*!
+     * Returns either the current configuration (at possibly different times in the timestep)
+     * or the reference configuration using a petsc vector instead of a numeric vector
+     * 
+     */
+    libMesh::PetscVector<double>* 
+    getMeshCoordinatesPetsc(bool isCurrentConfiguration,std::string time,unsigned int part);
+
     /*!
      * Evaluates the normal vector at a given quadrature point using either the element normal (old way)
      * or using phong vectors, which reconstructs the geometry curvature linearly between nodes

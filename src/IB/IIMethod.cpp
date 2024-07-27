@@ -237,7 +237,119 @@ IIMethod::getFEDataManager(const unsigned int part) const
     return d_fe_data_managers[part];
 } // getFEDataManager
 
-//DenseMatrix<double> 
+NumericVector<double>* 
+IIMethod::getMeshCoordinatesNumeric(bool isCurrentConfiguration,std::string time,unsigned int part){
+
+
+    if(isCurrentConfiguration){
+
+        NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        NumericVector<double>* X_vec = nullptr;
+
+        if(time == "current"){
+            X_vec = d_X_current_vecs[part];
+            copy_and_synch(*X_vec, *X_ghost_vec); 
+
+        }
+        else if(time == "half"){
+            X_vec = d_X_half_vecs[part];
+            copy_and_synch(*X_vec, *X_ghost_vec); 
+        }
+        else if(time == "new"){
+            X_vec = d_X_new_vecs[part];
+            copy_and_synch(*X_vec, *X_ghost_vec); 
+        }
+        else if(time == "ib_ghost"){
+            //already assigned X_ghost_veec
+        }
+        else{
+            TBOX_ERROR("time must be set to current, half, new, or ib_ghost. case sensitive.");
+        }
+        return X_ghost_vec;
+
+    }
+    else{ //reference configuration
+
+        EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+        const MeshBase& mesh = equation_systems->get_mesh();
+        const unsigned int dim = mesh.mesh_dimension();
+        std::unique_ptr<QBase> qrule;
+        System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+        const DofMap& X_dof_map = X_system.get_dof_map();
+        FEDataManager::SystemDofMapCache& X_dof_map_cache =
+            *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
+        FEType X_fe_type = X_dof_map.variable_type(0);
+
+        NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        X_ghost_vec->close();
+        PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);  
+        NumericVector<double>* X0_vec;
+        copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
+        X0_vec->close();
+
+        return X0_vec; 
+    }
+
+} //getMeshCoordinatesNumeric
+
+PetscVector<double>* 
+IIMethod::getMeshCoordinatesPetsc(bool isCurrentConfiguration,std::string time,unsigned int part){
+
+    //this should only be used for reference configuration in the current ibamr code, otherwise we 
+    //will accidentally return the incorrect data type
+
+    if(isCurrentConfiguration){
+
+        PetscVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        PetscVector<double>* X_vec = nullptr;
+
+        if(time == "current"){
+            X_vec = d_X_current_vecs[part];
+            copy_and_synch(*X_vec, *X_ghost_vec); 
+
+        }
+        else if(time == "half"){
+            X_vec = d_X_half_vecs[part];
+            copy_and_synch(*X_vec, *X_ghost_vec); 
+        }
+        else if(time == "new"){
+            X_vec = d_X_new_vecs[part];
+            copy_and_synch(*X_vec, *X_ghost_vec); 
+        }
+        else if(time == "ib_ghost"){
+            //already assigned X_ghost_veec
+        }
+        else{
+            TBOX_ERROR("time must be set to current, half, new, or ib_ghost. case sensitive.");
+        }
+        return X_ghost_vec;
+
+    }
+    else{ //reference configuration
+
+        EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+        const MeshBase& mesh = equation_systems->get_mesh();
+        const unsigned int dim = mesh.mesh_dimension();
+        std::unique_ptr<QBase> qrule;
+        System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+        const DofMap& X_dof_map = X_system.get_dof_map();
+        FEDataManager::SystemDofMapCache& X_dof_map_cache =
+            *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
+        FEType X_fe_type = X_dof_map.variable_type(0);
+
+        NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        //copy_and_synch(*X_vec, *X_ghost_vec);
+        X_ghost_vec->close();
+        PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);
+        PetscVector<double>* X0_vec;
+        copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
+        X0_vec->close();
+
+        return X0_vec; 
+    }
+}//getMeshCoordinatesPetsc
+
+
 void
 IIMethod::setupPhongNormalVectors(bool isCurrentConfiguration, unsigned int part, NumericVector<double> *x_current_vec){
     //returns the matrix of area weighted nodal normal vectors to gain a better 
@@ -1134,7 +1246,9 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         NumericVector<double>* U_n_vec = nullptr;
         NumericVector<double>* U_t_vec = nullptr;
         NumericVector<double>* X_vec = nullptr;
-        NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(true,"ib_ghost",part);
+       
+
         const std::array<PetscVector<double>*, NDIM> DU_jump_ghost_vec = {
             d_use_u_interp_correction ? d_DU_jump_IB_ghost_vecs[part][0] : nullptr,
             d_use_u_interp_correction ? d_DU_jump_IB_ghost_vecs[part][1] : nullptr,
@@ -1147,28 +1261,28 @@ IIMethod::interpolateVelocity(const int u_data_idx,
             U_vec = d_U_current_vecs[part];
             U_n_vec = d_U_n_current_vecs[part];
             U_t_vec = d_U_t_current_vecs[part];
-            X_vec = d_X_current_vecs[part];
+            X_vec = getMeshCoordinatesNumeric(true,"current",part);  //d_X_current_vecs[part];
         }
         else if (MathUtilities<double>::equalEps(data_time, d_half_time))
         {
             U_vec = d_U_half_vecs[part];
             U_n_vec = d_U_n_half_vecs[part];
             U_t_vec = d_U_t_half_vecs[part];
-            X_vec = d_X_half_vecs[part];
+            X_vec = getMeshCoordinatesNumeric(true,"half",part); //d_X_half_vecs[part];
         }
         else if (MathUtilities<double>::equalEps(data_time, d_new_time))
         {
             U_vec = d_U_new_vecs[part];
             U_n_vec = d_U_n_new_vecs[part];
             U_t_vec = d_U_t_new_vecs[part];
-            X_vec = d_X_new_vecs[part];
+            X_vec = getMeshCoordinatesNumeric(true,"new",part); //d_X_new_vecs[part];
         }
-        copy_and_synch(*X_vec, *X_ghost_vec);
+        copy_and_synch(*X_vec, *X_ghost_vec); //changed for reference config calculations
+
 
         NumericVector<double>* WSS_in_vec = d_use_u_interp_correction ? d_WSS_in_half_vecs[part] : nullptr;
         NumericVector<double>* WSS_out_vec = d_use_u_interp_correction ? d_WSS_out_half_vecs[part] : nullptr;
 
-        // Extract the mesh.
         EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
         const MeshBase& mesh = equation_systems->get_mesh();
         const unsigned int dim = mesh.mesh_dimension();
@@ -1181,8 +1295,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
             *d_fe_data_managers[part]->getDofMapCache(VELOCITY_SYSTEM_NAME);
         System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
         const DofMap& X_dof_map = X_system.get_dof_map();
-        FEDataManager::SystemDofMapCache& X_dof_map_cache =
-            *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
+        FEDataManager::SystemDofMapCache& X_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
         std::vector<std::vector<unsigned int> > U_dof_indices(NDIM);
         std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
         FEType U_fe_type = U_dof_map.variable_type(0);
@@ -1326,6 +1439,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     X_dof_map_cache.dof_indices(elem, X_dof_indices[axis], axis);
                 }
                 get_values_for_interpolation(x_node, *X_ghost_vec, X_dof_indices);
+
                 FEDataManager::updateInterpQuadratureRule(qrule, d_default_interp_spec, elem, x_node, patch_dx_min);
                 n_qpoints_patch += qrule->n_points();
             }
@@ -1871,17 +1985,17 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
 
     if (MathUtilities<double>::equalEps(data_time, d_current_time))
     {
-        X_vec = d_X_current_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "current", part); //d_X_current_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_half_time))
     {
-        X_vec = d_X_half_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_half_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_new_time))
     {
-        X_vec = d_X_new_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_new_vecs[part];
     }
-    NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+    NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(true, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
     copy_and_synch(*X_vec, *X_ghost_vec);
     //the following are used for phong shading
     if(d_use_phong_normals){
@@ -1991,15 +2105,25 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
     const std::vector<std::vector<double> >& phi_wss = fe_wss->get_phi();
 
     X_ghost_vec->close();
+
     PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);
     Vec X_global_vec = X_petsc_vec->vec();
+
     Vec X_local_vec;
     VecGhostGetLocalForm(X_global_vec, &X_local_vec);
     double* X_local_soln;
     VecGetArray(X_local_vec, &X_local_soln);
-    std::unique_ptr<NumericVector<double> > X0_vec = X_petsc_vec->clone();
-    copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
+
+    NumericVector<double>* X0_vec = getMeshCoordinatesNumeric(false, "reference", part);
+
+    //std::unique_ptr<NumericVector<double> > X0_vec = X_petsc_vec->clone();
+    //copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
     X0_vec->close();
+
+
+
+
+
 
     const std::vector<std::vector<Elem*> >& active_patch_element_map =
         d_fe_data_managers[part]->getActivePatchElementMap();
@@ -2332,7 +2456,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
     NumericVector<double>* P_out_vec = d_P_out_half_vecs[part];
     NumericVector<double>* P_jump_ghost_vec = d_P_jump_IB_ghost_vecs[part];
     NumericVector<double>* X_vec = NULL;
-    NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+    NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(true, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
 
     std::unique_ptr<NumericVector<double> > P_in_rhs_vec = (*P_in_vec).zero_clone();
     P_in_rhs_vec->zero();
@@ -2344,15 +2468,15 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
     if (MathUtilities<double>::equalEps(data_time, d_current_time))
     {
-        X_vec = d_X_current_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "current", part); //d_X_current_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_half_time))
     {
-        X_vec = d_X_half_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_half_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_new_time))
     {
-        X_vec = d_X_new_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "new", part); //d_X_new_vecs[part];
     }
     copy_and_synch(*X_vec, *X_ghost_vec);
 
@@ -2864,7 +2988,7 @@ IIMethod::computeLagrangianForce(const double data_time)
         VectorValue<double>& F_integral = d_lag_surface_force_integral[part];
         F_integral.zero();
 
-        NumericVector<double>* X_vec = d_X_half_vecs[part];
+        NumericVector<double>* X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_half_vecs[part];
         double surface_area = 0.0;
 
         NumericVector<double>* P_jump_vec = d_use_pressure_jump_conditions ? d_P_jump_half_vecs[part] : nullptr;
@@ -2909,7 +3033,7 @@ IIMethod::computeLagrangianForce(const double data_time)
             TBOX_ASSERT(X_dof_map.variable_type(d) == X_fe_type);
         }
         TBOX_ASSERT(X_fe_type == F_fe_type);
-        NumericVector<double>& X0_vec = X_system.get_vector("INITIAL_COORDINATES");
+        NumericVector<double>& X0_vec = X_system.get_vector("INITIAL_COORDINATES"); //don't touch this for now
         System* P_jump_system;
         const DofMap* P_jump_dof_map = NULL;
         FEDataManager::SystemDofMapCache* P_jump_dof_map_cache = NULL;
@@ -3275,14 +3399,14 @@ IIMethod::spreadForce(const int f_data_idx,
 
     for (unsigned int part = 0; part < d_num_parts; ++part)
     {
-        PetscVector<double>* X_vec = d_X_half_vecs[part];
-        PetscVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        PetscVector<double>* X_vec = getMeshCoordinatesPetsc(true, "half", part); //d_X_half_vecs[part];
+        PetscVector<double>* X_ghost_vec = getMeshCoordinatesPetsc(true, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
         PetscVector<double>* F_vec = d_F_half_vecs[part];
         PetscVector<double>* F_ghost_vec = d_F_IB_ghost_vecs[part];
         X_vec->localize(*X_ghost_vec);
         F_vec->localize(*F_ghost_vec);
-        d_fe_data_managers[part]->spread(
-            f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
+        d_fe_data_managers[part]->spread(f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
+
         PetscVector<double>* P_jump_vec;
         PetscVector<double>* P_jump_ghost_vec = NULL;
         std::array<PetscVector<double>*, NDIM> DU_jump_ghost_vec;
@@ -3759,7 +3883,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                const double /*data_time*/,
                                const unsigned int part)
 {
-    NumericVector<double>* x_current_vec = dynamic_cast<NumericVector<double>*>(&X_ghost_vec);
+    NumericVector<double>* x_current_vec = dynamic_cast<NumericVector<double>*>(&X_ghost_vec); //this looks important for changing things to ref config
     // Extract the mesh.
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
     const MeshBase& mesh = equation_systems->get_mesh();
