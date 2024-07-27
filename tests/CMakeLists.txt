@@ -144,10 +144,12 @@ SETUP(multiphase_flow free_falling_cyl_cib.cpp IBAMR2d)
 SETUP(multiphase_flow rotating_barge_cib.cpp IBAMR2d)
 SETUP(multiphase_flow check_hydro_force.cpp IBAMR2d)
 SETUP(multiphase_flow high_density_droplet.cpp IBAMR2d)
+SETUP(multiphase_flow water_entry_circular_cylinder.cpp IBAMR2d)
 
 # navier_stokes:
 SETUP_2D(navier_stokes navier_stokes_01.cpp)
 SETUP_3D(navier_stokes navier_stokes_01.cpp)
+SETUP_2D(navier_stokes poiseuille_flow_2d.cpp)
 SETUP_2D(navier_stokes stokes_operator.cpp)
 SETUP_3D(navier_stokes stokes_operator.cpp)
 
@@ -273,6 +275,7 @@ SETUP_2D(IBTK samraidatacache_01.cpp)
 SETUP_2D(IBTK secondary_hierarchy_01.cpp)
 SETUP_2D(IBTK vc_viscous_solver.cpp)
 SETUP_2D(IBTK helmholtz.cpp)
+SETUP_2D(IBTK index_utilities.cpp)
 SETUP_2D(IBTK marker_points_01.cpp)
 SETUP_2D(IBTK marker_points_02.cpp)
 SETUP_2D(IBTK cf_interface.cpp)
@@ -295,6 +298,7 @@ SETUP_3D(IBTK prolongation_mat.cpp)
 SETUP_3D(IBTK samraidatacache_01.cpp)
 SETUP_3D(IBTK vc_viscous_solver.cpp)
 SETUP_3D(IBTK helmholtz.cpp)
+SETUP_3D(IBTK index_utilities.cpp)
 SETUP_3D(IBTK cf_interface.cpp)
 
 ADD_CUSTOM_COMMAND(TARGET tests

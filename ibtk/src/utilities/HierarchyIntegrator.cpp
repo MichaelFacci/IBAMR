@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2014 - 2023 by the IBAMR developers
+// Copyright (c) 2014 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -83,7 +83,7 @@ namespace IBTK
 namespace
 {
 // Version of HierarchyIntegrator restart file data.
-static const int HIERARCHY_INTEGRATOR_VERSION = 1;
+static const int HIERARCHY_INTEGRATOR_VERSION = 2;
 // Timers.
 static Timer* t_regrid_hierarchy;
 static Timer* t_advance_hierarchy;
@@ -130,6 +130,7 @@ HierarchyIntegrator::HierarchyIntegrator(std::string object_name, Pointer<Databa
     d_current_context = var_db->getContext(d_object_name + "::CURRENT");
     d_new_context = var_db->getContext(d_object_name + "::NEW");
     d_scratch_context = var_db->getContext(d_object_name + "::SCRATCH");
+    d_plot_context = var_db->getContext(d_object_name + "::PLOT");
 
     // Create default communications algorithms.
     d_coarsen_algs[SYNCH_CURRENT_DATA_ALG] = new CoarsenAlgorithm<NDIM>();
@@ -546,6 +547,10 @@ HierarchyIntegrator::updateWorkloadEstimates()
 {
     if (d_workload_idx != IBTK::invalid_index)
     {
+        // If we are starting from a restart file then we have to allocate this
+        // ourselves
+        allocatePatchData(d_workload_idx, d_integrator_time);
+
         HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(d_hierarchy);
         hier_cc_data_ops.setToScalar(d_workload_idx, 1.0, /*interior_only*/ false);
 
@@ -581,7 +586,7 @@ HierarchyIntegrator::registerLoadBalancer(Pointer<LoadBalancer<NDIM> > load_bala
     if (d_workload_idx == IBTK::invalid_index)
     {
         d_workload_var = new CellVariable<NDIM, double>(d_object_name + "::workload");
-        registerVariable(d_workload_idx, d_workload_var, 0, getCurrentContext());
+        registerVariable(d_workload_idx, d_workload_var, 0, getCurrentContext(), false);
     }
     d_load_balancer->setWorkloadPatchDataIndex(d_workload_idx);
     return;
@@ -824,6 +829,14 @@ HierarchyIntegrator::initializeLevelData(const Pointer<BasePatchHierarchy<NDIM> 
     // Initialize level data at the initial time.
     if (initial_time)
     {
+        // Initialize or reset the hierarchy math operations object.
+        d_hier_math_ops = buildHierarchyMathOps(hierarchy);
+        if (d_manage_hier_math_ops)
+        {
+            d_hier_math_ops->setPatchHierarchy(hierarchy);
+            d_hier_math_ops->resetLevels(0, std::max(level_number, hierarchy->getFinestLevelNumber()));
+        }
+
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
         for (const auto& var : d_state_variables)
         {

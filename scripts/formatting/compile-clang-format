@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# based on the compile_clang_format deal.II script and licensed under the LGPL
+# based on the compile-clang-format deal.II script and licensed under the LGPL
 
 #
 # This script downloads, compiles and installs the clang-format binary. The
@@ -54,7 +54,7 @@ else
   GIT_SHALLOW_SINCE_AVAILABLE=false
 fi
 
-git init
+git init --initial-branch=main
 git remote add origin "${LLVM_REPOSITORY}"
 if [ "$GIT_SHALLOW_SINCE_AVAILABLE" = true ]; then
   git fetch --shallow-since="${RELEASE_DATE}" origin "${RELEASE_BRANCH}"

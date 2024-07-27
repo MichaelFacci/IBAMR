@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2019 - 2022 by the IBAMR developers
+// Copyright (c) 2019 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -357,7 +357,7 @@ CFINSForcing::setDataOnPatchHierarchy(const int data_idx,
                                                                  "LINEAR",
                                                                  false,
                                                                  d_conc_bc_coefs_ptrs,
-                                                                 NULL,
+                                                                 nullptr,
                                                                  d_interp_type);
     HierarchyGhostCellInterpolation ghost_fill_op;
     ghost_fill_op.initializeOperatorState(ghost_cell_components, hierarchy);

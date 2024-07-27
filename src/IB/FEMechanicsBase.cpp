@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2014 - 2023 by the IBAMR developers
+// Copyright (c) 2014 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -1583,7 +1583,7 @@ FEMechanicsBase::commonConstructor(const std::string& object_name,
     d_libmesh_restart_file_extension = "xdr";
     d_libmesh_partitioner_type = LIBMESH_DEFAULT;
 
-    // Initialize function data to NULL.
+    // Initialize function data to nullptr.
     d_coordinate_mapping_fcn_data.resize(n_parts);
     d_initial_velocity_fcn_data.resize(n_parts);
     d_PK1_stress_fcn_data.resize(n_parts);

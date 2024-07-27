@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2018 - 2023 by the IBAMR developers
+// Copyright (c) 2018 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -195,7 +195,7 @@ INSVCStaggeredNonConservativeHierarchyIntegrator::initializeHierarchyIntegrator(
             TBOX_ASSERT(!d_rho_var);
             TBOX_ASSERT(!d_rho_init_fcn);
 #endif
-            d_rho_var = Pointer<CellVariable<NDIM, double> >(nullptr);
+            d_rho_var = nullptr;
             // Ensure that boundary conditions are provided by the
             // advection-diffusion integrator
             d_rho_bc_coef =

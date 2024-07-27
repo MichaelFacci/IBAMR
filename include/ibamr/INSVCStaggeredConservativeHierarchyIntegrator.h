@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2018 - 2023 by the IBAMR developers
+// Copyright (c) 2018 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -154,7 +154,7 @@ public:
      *
      * \note The class employs INSVCStaggeredConservativeMassMomentumIntegrator
      * to compute the conservative convective derivative. Therefore,
-     * ConvectiveOperator is a NULL object.
+     * ConvectiveOperator is a nullptr object.
      */
     SAMRAI::tbox::Pointer<ConvectiveOperator> getConvectiveOperator() override;
 

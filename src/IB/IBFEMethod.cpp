@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2014 - 2023 by the IBAMR developers
+// Copyright (c) 2014 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -171,7 +171,7 @@ static Timer* t_begin_data_redistribution;
 static Timer* t_end_data_redistribution;
 static Timer* t_apply_gradient_detector;
 // Version of IBFEMethod restart file data.
-const int IBFE_METHOD_VERSION = 6;
+const int IBFE_METHOD_VERSION = 7;
 
 inline boundary_id_type
 get_dirichlet_bdry_ids(const std::vector<boundary_id_type>& bdry_ids)
@@ -1288,7 +1288,9 @@ IBFEMethod::registerEulerianVariables()
                      d_lagrangian_workload_var,
                      ghosts,
                      d_lagrangian_workload_coarsen_type,
-                     d_lagrangian_workload_refine_type);
+                     d_lagrangian_workload_refine_type,
+                     nullptr,
+                     false);
     return;
 } // registerEulerianVariables
 
@@ -2816,7 +2818,7 @@ IBFEMethod::commonConstructor(const Pointer<Database>& input_db, int max_levels)
                                                       use_nodal_quadrature,
                                                       allow_rules_with_negative_weights);
 
-    // Initialize function data to NULL.
+    // Initialize function data to nullptr.
     d_lag_body_source_part.resize(n_parts, false);
     d_lag_body_source_fcn_data.resize(n_parts);
     d_direct_forcing_kinematics_data.resize(n_parts, Pointer<IBFEDirectForcingKinematics>(nullptr));

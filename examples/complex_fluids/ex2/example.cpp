@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2019 - 2022 by the IBAMR developers
+// Copyright (c) 2019 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -186,11 +186,12 @@ main(int argc, char* argv[])
             }
             TriangleInterface triangle(solid_mesh);
             triangle.triangulation_type() = TriangleInterface::GENERATE_CONVEX_HULL;
-            triangle.elem_type() = Utility::string_to_enum<ElemType>(elem_type);
             triangle.desired_area() = 1.5 * sqrt(3.0) / 4.0 * ds * ds;
             triangle.insert_extra_points() = true;
             triangle.smooth_after_generating() = true;
             triangle.triangulate();
+
+            if (elem_type == "TRI6") solid_mesh.all_second_order();
 #else
             TBOX_ERROR("ERROR: libMesh appears to have been configured without support for Triangle,\n"
                        << "       but Triangle is required for TRI3 or TRI6 elements.\n");
@@ -323,7 +324,7 @@ main(int argc, char* argv[])
         {
             for (unsigned int d = 0; d < NDIM; ++d)
             {
-                u_bc_coefs[d] = NULL;
+                u_bc_coefs[d] = nullptr;
             }
         }
         else
@@ -376,7 +377,7 @@ main(int argc, char* argv[])
             relaxation_time = input_db->getDatabase("ComplexFluid")->getDouble("relaxation_time");
         }
 
-        std::unique_ptr<ExodusII_IO> exodus_io(uses_exodus ? new ExodusII_IO(mesh) : NULL);
+        std::unique_ptr<ExodusII_IO> exodus_io(uses_exodus ? new ExodusII_IO(mesh) : nullptr);
 
         // Initialize hierarchy configuration and data on all patches.
         ib_method_ops->initializeFEData();
@@ -575,7 +576,7 @@ postprocess_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
     std::vector<const std::vector<double>*> var_data(1);
     var_data[0] = &U_qp_vec;
     std::vector<const std::vector<libMesh::VectorValue<double> >*> grad_var_data;
-    void* force_fcn_ctx = NULL;
+    void* force_fcn_ctx = nullptr;
 
     TensorValue<double> FF, FF_inv_trans;
     boost::multi_array<double, 2> x_node, U_node;

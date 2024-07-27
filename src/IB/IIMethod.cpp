@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2018 - 2023 by the IBAMR developers
+// Copyright (c) 2018 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -95,7 +95,6 @@
 #include "ibamr/namespaces.h" // IWYU pragma: keep
 
 IBTK_DISABLE_EXTRA_WARNINGS
-#include <boost/math/special_functions/round.hpp>
 #include <boost/multi_array.hpp>
 IBTK_ENABLE_EXTRA_WARNINGS
 
@@ -1198,13 +1197,13 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         FEType DU_jump_fe_type;
         std::vector<std::vector<unsigned int> > WSS_out_dof_indices(NDIM);
         System* WSS_out_system;
-        const DofMap* WSS_out_dof_map = NULL;
-        FEDataManager::SystemDofMapCache* WSS_out_dof_map_cache = NULL;
+        const DofMap* WSS_out_dof_map = nullptr;
+        FEDataManager::SystemDofMapCache* WSS_out_dof_map_cache = nullptr;
 
         std::vector<std::vector<unsigned int> > WSS_in_dof_indices(NDIM);
         System* WSS_in_system;
-        const DofMap* WSS_in_dof_map = NULL;
-        FEDataManager::SystemDofMapCache* WSS_in_dof_map_cache = NULL;
+        const DofMap* WSS_in_dof_map = nullptr;
+        FEDataManager::SystemDofMapCache* WSS_in_dof_map_cache = nullptr;
 
         if (d_use_u_interp_correction)
         {
@@ -1544,7 +1543,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         for (unsigned int d = 0; d < NDIM; ++d)
                         {
                             x[d] = x_qp[s * NDIM + d];
-                            ic_center[d] = ilower[d] + boost::math::iround((x[d] - x_lower_axis[d]) / dx[d] - 0.5);
+                            ic_center[d] =
+                                ilower[d] + static_cast<int>(std::round((x[d] - x_lower_axis[d]) / dx[d] - 0.5));
                             x_cell[d] = x_lower_axis[d] + ((ic_center[d] - ilower[d]) + 0.5) * dx[d];
                             if (x[d] <= x_cell[d])
                             {
@@ -1852,22 +1852,22 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
                              d_X_new_vecs[part] },
                            INSERT_VALUES,
                            SCATTER_FORWARD);
-    NumericVector<double>* WSS_in_vec = NULL;
+    NumericVector<double>* WSS_in_vec = nullptr;
     NumericVector<double>* WSS_in_ghost_vec = d_WSS_in_IB_ghost_vecs[part];
 
-    NumericVector<double>* WSS_out_vec = NULL;
+    NumericVector<double>* WSS_out_vec = nullptr;
     NumericVector<double>* WSS_out_ghost_vec = d_WSS_out_IB_ghost_vecs[part];
 
-    NumericVector<double>* P_in_vec = NULL;
+    NumericVector<double>* P_in_vec = nullptr;
     NumericVector<double>* P_in_ghost_vec = d_P_in_IB_ghost_vecs[part];
 
-    NumericVector<double>* P_out_vec = NULL;
+    NumericVector<double>* P_out_vec = nullptr;
     NumericVector<double>* P_out_ghost_vec = d_P_out_IB_ghost_vecs[part];
 
     NumericVector<double>* TAU_in_vec = d_TAU_in_half_vecs[part];
     NumericVector<double>* TAU_out_vec = d_TAU_out_half_vecs[part];
 
-    NumericVector<double>* X_vec = NULL;
+    NumericVector<double>* X_vec = nullptr;
 
     if (MathUtilities<double>::equalEps(data_time, d_current_time))
     {
@@ -2331,7 +2331,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
     NumericVector<double>* P_in_vec = d_P_in_half_vecs[part];
     NumericVector<double>* P_out_vec = d_P_out_half_vecs[part];
     NumericVector<double>* P_jump_ghost_vec = d_P_jump_IB_ghost_vecs[part];
-    NumericVector<double>* X_vec = NULL;
+    NumericVector<double>* X_vec = nullptr;
     NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
 
     std::unique_ptr<NumericVector<double> > P_in_rhs_vec = (*P_in_vec).zero_clone();
@@ -2729,7 +2729,7 @@ IIMethod::calculateInterfacialFluidForces(const int p_data_idx, double data_time
     const auto p_scratch_data_idx = d_eulerian_data_cache->getCachedPatchDataIndex(d_p_scratch_idx);
     RefineAlgorithm<NDIM> ghost_fill_alg_p;
     // TODO: Can we cache this algorithm/schedule?
-    ghost_fill_alg_p.registerRefine(p_scratch_data_idx, p_data_idx, p_scratch_data_idx, NULL);
+    ghost_fill_alg_p.registerRefine(p_scratch_data_idx, p_data_idx, p_scratch_data_idx, nullptr);
     Pointer<RefineSchedule<NDIM> > ghost_fill_schd_p =
         ghost_fill_alg_p.createSchedule(d_hierarchy->getPatchLevel(finest_ln));
 
@@ -2911,8 +2911,8 @@ IIMethod::computeLagrangianForce(const double data_time)
         TBOX_ASSERT(X_fe_type == F_fe_type);
         NumericVector<double>& X0_vec = X_system.get_vector("INITIAL_COORDINATES");
         System* P_jump_system;
-        const DofMap* P_jump_dof_map = NULL;
-        FEDataManager::SystemDofMapCache* P_jump_dof_map_cache = NULL;
+        const DofMap* P_jump_dof_map = nullptr;
+        FEDataManager::SystemDofMapCache* P_jump_dof_map_cache = nullptr;
         FEType P_jump_fe_type;
         if (d_use_pressure_jump_conditions)
         {
@@ -3284,7 +3284,7 @@ IIMethod::spreadForce(const int f_data_idx,
         d_fe_data_managers[part]->spread(
             f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
         PetscVector<double>* P_jump_vec;
-        PetscVector<double>* P_jump_ghost_vec = NULL;
+        PetscVector<double>* P_jump_ghost_vec = nullptr;
         std::array<PetscVector<double>*, NDIM> DU_jump_ghost_vec;
         std::array<PetscVector<double>*, NDIM> DU_jump_vec;
         if (d_use_pressure_jump_conditions)
@@ -3774,7 +3774,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
 
     System* P_jump_system;
     const DofMap* P_jump_dof_map;
-    FEDataManager::SystemDofMapCache* P_jump_dof_map_cache = NULL;
+    FEDataManager::SystemDofMapCache* P_jump_dof_map_cache = nullptr;
     FEType P_jump_fe_type;
     if (d_use_pressure_jump_conditions)
     {
@@ -3929,7 +3929,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                     // nodes.
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
-                        const int i_s = boost::math::iround(((x(d) - x_lower[d]) / dx[d]) - 0.5) + patch_lower[d];
+                        const int i_s =
+                            static_cast<int>(std::round(((x(d) - x_lower[d]) / dx[d]) - 0.5)) + patch_lower[d];
                         for (int shift = 0; shift <= 2; ++shift)
                         {
                             const double x_s =
@@ -4031,7 +4032,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                             const libMesh::Point x = r + intersections[k].first * q;
                             const libMesh::Point& xi = intersections[k].second;
                             SideIndex<NDIM> i_s(i_c, axis, 0);
-                            i_s(axis) = boost::math::iround((x(axis) - x_lower[axis]) / dx[axis]) + patch_lower[axis];
+                            i_s(axis) =
+                                static_cast<int>(std::round((x(axis) - x_lower[axis]) / dx[axis])) + patch_lower[axis];
                             if (extended_box.contains(i_s))
                             {
                                 std::vector<libMesh::Point> ref_coords(1, xi);
@@ -4117,10 +4119,10 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                             i_c_neighbor(axis) += 1;
 
                             SideIndex<NDIM> i_s_up(i_c_neighbor, axis, 0);
-                            i_s_up(axis) =
-                                boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] + 0.5) + patch_lower[axis];
-                            i_s_um(axis) =
-                                boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] - 0.5) + patch_lower[axis];
+                            i_s_up(axis) = static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] + 0.5)) +
+                                           patch_lower[axis];
+                            i_s_um(axis) = static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] - 0.5)) +
+                                           patch_lower[axis];
 
                             if (extended_box.contains(i_s_up) && extended_box.contains(i_s_um))
                             {
@@ -4230,10 +4232,11 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
 
                                         SideIndex<NDIM> i_side_up(i_c_neighbor, SideDim[axis][j], 0);
 
-                                        i_side_up(axis) = boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis]) +
-                                                          patch_lower[axis];
+                                        i_side_up(axis) =
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis])) +
+                                            patch_lower[axis];
                                         i_side_um(axis) =
-                                            boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] - 0.5) +
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] - 0.5)) +
                                             patch_lower[axis];
                                         i_s_up = i_side_up;
                                         i_s_um = i_side_um;
@@ -4245,10 +4248,10 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                         i_c_neighbor(axis) -= 1;
                                         SideIndex<NDIM> i_side_um(i_c_neighbor, SideDim[axis][j], 0);
                                         i_side_up(axis) =
-                                            boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] - 0.5) +
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] - 0.5)) +
                                             patch_lower[axis];
                                         i_side_um(axis) =
-                                            boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] - 1.0) +
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] - 1.0)) +
                                             patch_lower[axis];
                                         i_s_up = i_side_up;
                                         i_s_um = i_side_um;
@@ -4268,10 +4271,11 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
 
                                         SideIndex<NDIM> i_side_up(i_c_neighbor, SideDim[axis][j], 0);
 
-                                        i_side_up(axis) = boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis]) +
-                                                          patch_lower[axis];
+                                        i_side_up(axis) =
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis])) +
+                                            patch_lower[axis];
                                         i_side_um(axis) =
-                                            boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] - 0.5) +
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] - 0.5)) +
                                             patch_lower[axis];
                                         i_s_up = i_side_up;
                                         i_s_um = i_side_um;
@@ -4283,10 +4287,10 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                         i_c_neighbor(axis) -= 1;
                                         SideIndex<NDIM> i_side_um(i_c_neighbor, SideDim[axis][j], 0);
                                         i_side_up(axis) =
-                                            boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] - 0.5) +
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] - 0.5)) +
                                             patch_lower[axis];
                                         i_side_um(axis) =
-                                            boost::math::iround((xu(axis) - x_lower[axis]) / dx[axis] - 1.0) +
+                                            static_cast<int>(std::round((xu(axis) - x_lower[axis]) / dx[axis] - 1.0)) +
                                             patch_lower[axis];
                                         i_s_up = i_side_up;
                                         i_s_um = i_side_um;
@@ -4612,7 +4616,7 @@ IIMethod::commonConstructor(const std::string& object_name,
     d_default_quad_type.resize(d_num_parts, INVALID_Q_RULE);
     d_default_quad_order.resize(d_num_parts, INVALID_ORDER);
 
-    // Initialize function data to NULL.
+    // Initialize function data to nullptr.
     d_coordinate_mapping_fcn_data.resize(d_num_parts);
     d_initial_velocity_fcn_data.resize(d_num_parts);
     d_lag_surface_pressure_fcn_data.resize(d_num_parts);

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2008 - 2023 by the IBAMR developers
+// Copyright (c) 2008 - 2024 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -102,7 +102,7 @@ public:
      * Get the convective operator being used by this solver class.
      *
      * If the time integrator is configured to solve the time-dependent
-     * (creeping) Stokes equations, then the returned pointer will be NULL.
+     * (creeping) Stokes equations, then the returned pointer will be nullptr.
      *
      * If the convective operator has not already been constructed, and if the
      * time integrator is not configured to solve the time-dependent (creeping)
@@ -421,7 +421,6 @@ private:
     SAMRAI::tbox::Pointer<SAMRAI::pdat::NodeVariable<NDIM, double> > d_Omega_nc_var;
     SAMRAI::tbox::Pointer<SAMRAI::pdat::CellVariable<NDIM, double> > d_Div_U_var;
 
-    SAMRAI::tbox::Pointer<SAMRAI::pdat::CellVariable<NDIM, double> > d_Omega_Norm_var;
     SAMRAI::tbox::Pointer<SAMRAI::pdat::SideVariable<NDIM, double> > d_U_regrid_var;
     SAMRAI::tbox::Pointer<SAMRAI::pdat::SideVariable<NDIM, double> > d_U_src_var;
     SAMRAI::tbox::Pointer<SAMRAI::pdat::SideVariable<NDIM, double> > d_indicator_var;
@@ -480,8 +479,8 @@ private:
      *
      * Scratch variables have only one context: scratch.
      */
-    int d_Omega_Norm_idx = IBTK::invalid_index, d_U_regrid_idx = IBTK::invalid_index, d_U_src_idx = IBTK::invalid_index,
-        d_indicator_idx = IBTK::invalid_index, d_F_div_idx = IBTK::invalid_index;
+    int d_U_regrid_idx = IBTK::invalid_index, d_U_src_idx = IBTK::invalid_index, d_indicator_idx = IBTK::invalid_index,
+        d_F_div_idx = IBTK::invalid_index;
 };
 } // namespace IBAMR
 
