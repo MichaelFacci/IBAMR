@@ -167,7 +167,24 @@ public:
         CoordinateMappingFcnPtr fcn;
         void* ctx;
     };
-/*!
+
+    /*!
+     * Returns either the current configuration (at possibly different times in the timestep)
+     * or the reference configuration with a numeric vector
+     * 
+     */
+    libMesh::NumericVector<double>* 
+    getMeshCoordinatesNumeric(bool isCurrentConfiguration,std::string time,unsigned int part);
+    
+    /*!
+     * Returns either the current configuration (at possibly different times in the timestep)
+     * or the reference configuration using a petsc vector instead of a numeric vector
+     * 
+     */
+    libMesh::PetscVector<double>* 
+    getMeshCoordinatesPetsc(bool isCurrentConfiguration,std::string time,unsigned int part);
+
+    /*!
      * Evaluates the normal vector at a given quadrature point using either the element normal (old way)
      * or using phong vectors, which reconstructs the geometry curvature linearly between nodes
      * 
@@ -623,6 +640,7 @@ protected:
     std::vector<bool> d_use_tangential_velocity = { false };
     std::vector<bool> d_normalize_pressure_jump = { false };
     bool d_use_phong_normals = false;
+    bool d_use_current_mesh_configuration = true;
     const unsigned int d_num_parts = 1;
     std::vector<IBTK::FEDataManager*> d_fe_data_managers;
     SAMRAI::hier::IntVector<NDIM> d_ghosts = 0;

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (c) 2018 - 2022 by the IBAMR developers
+// Copyright (c) 2018 - 2023 by the IBAMR developers
 // All rights reserved.
 //
 // This file is part of IBAMR.
@@ -53,6 +53,7 @@
 #include "tbox/RestartManager.h"
 #include "tbox/SAMRAI_MPI.h"
 #include "tbox/Utilities.h"
+
 
 #include "libmesh/boundary_info.h"
 #include "libmesh/compare_types.h"
@@ -279,16 +280,12 @@ IIMethod::getMeshCoordinatesNumeric(bool isCurrentConfiguration,std::string time
             *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
         FEType X_fe_type = X_dof_map.variable_type(0);
 
-        //NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
-        //X_ghost_vec->close();
-        //PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);  
-        //NumericVector<double>* X0_vec;
-        //std::unique_ptr<NumericVector<double> > X0_vec = X_petsc_vec->clone();
-        //copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
-        NumericVector<double>& X0_vec_ref = X_system.get_vector("INITIAL_COORDINATES");
-
-        NumericVector<double>* X0_vec = &X0_vec_ref;
-        //X0_vec->close();
+        NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        X_ghost_vec->close();
+        PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);  
+        NumericVector<double>* X0_vec;
+        copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
+        X0_vec->close();
 
         return X0_vec; 
     }
@@ -340,20 +337,15 @@ IIMethod::getMeshCoordinatesPetsc(bool isCurrentConfiguration,std::string time,u
             *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
         FEType X_fe_type = X_dof_map.variable_type(0);
 
-        //NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
+        NumericVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
         //copy_and_synch(*X_vec, *X_ghost_vec);
-        //X_ghost_vec->close();
-        //PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);
-        //PetscVector<double>* X0_vec;
-        //copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
-        //X0_vec->close();
+        X_ghost_vec->close();
+        PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);
+        PetscVector<double>* X0_vec;
+        copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
+        X0_vec->close();
 
-        NumericVector<double>& X0_vec_ref = X_system.get_vector("INITIAL_COORDINATES");
-
-        NumericVector<double>* X0_vec = &X0_vec_ref;
-
-        PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X0_vec);
-        return X_petsc_vec; 
+        return X0_vec; 
     }
 }//getMeshCoordinatesPetsc
 
@@ -562,7 +554,7 @@ VectorValue<double>
 IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, bool USE_PHONG_NORMALS, libMesh::Elem* const elem, boost::multi_array<double, 2> x_node, const std::vector<std::vector<double> >& phi_X, std::array<const std::vector<std::vector<double> >*, NDIM - 1> dphi_dxi_X, unsigned int part){
     //this function returns the normal vector at a quadrature point on a particular element
     //either in the reference configuration or current configuration
-    //despite the fact that we pass in x_node, it is only used if USE_PHONG_NORMALS == false,
+    //despite the fact that we pass in x_node, it is only used if USE_HONG_NORMALS == false,
     //otherwise the d_current_nodal_normals or d_reference_nodal_normals is used to fill the normal_node variable
     //Note: THE RETURNED NORMAL VECTOR IS ***NOT*** UNIT LENGTH!
     
@@ -642,13 +634,79 @@ IIMethod::evaluateNormalVectors(bool isCurrentConfiguration,unsigned int qp, boo
 
 
 void
-IIMethod::registerDisconElemFamilyForJumps(const unsigned int part)
+IIMethod::registerDisconElemFamilyForTraction(const unsigned int part,
+                                              libMesh::FEFamily fe_family,
+                                              libMesh::Order fe_order)
 {
     TBOX_ASSERT(!d_fe_equation_systems_initialized);
     TBOX_ASSERT(part < d_num_parts);
-    d_use_discon_elem_for_jumps[part] = true;
+    if ((fe_family == L2_LAGRANGE && fe_order == FIRST) || (fe_family == MONOMIAL && fe_order == CONSTANT) ||
+        (fe_family == MONOMIAL && fe_order == FIRST))
+    {
+        d_traction_fe_family[part] = fe_family;
+        d_traction_fe_order[part] = fe_order;
+    }
+    else
+    {
+        TBOX_ERROR("Unsupported FE family type: " << fe_family << " with FE order:" << fe_order
+                                                  << " for the discontinuous traction \n");
+    }
     return;
-} // registerDisconElemFamilyForJumps
+} // registerDisconElemFamilyForTraction
+
+void
+IIMethod::registerDisconElemFamilyForPressureJump(const unsigned int part,
+                                                  libMesh::FEFamily fe_family,
+                                                  libMesh::Order fe_order)
+{
+    TBOX_ASSERT(!d_fe_equation_systems_initialized);
+    TBOX_ASSERT(part < d_num_parts);
+    if ((fe_family == L2_LAGRANGE && fe_order == FIRST) || (fe_family == MONOMIAL && fe_order == CONSTANT) ||
+        (fe_family == MONOMIAL && fe_order == FIRST))
+    {
+        d_pressure_jump_fe_family[part] = fe_family;
+        d_pressure_jump_fe_order[part] = fe_order;
+    }
+    else if (fe_family == LAGRANGE)
+    {
+        d_pressure_jump_fe_family[part] = d_fe_family[part];
+        d_pressure_jump_fe_order[part] = d_fe_order[part];
+    }
+    else
+    {
+        TBOX_ERROR("Unsupported FE family type: " << fe_family << " with FE order:" << fe_order
+                                                  << "for discontinuous pressure jump \n");
+    }
+    return;
+} // registerDisconElemFamilyForPressureJump
+
+void
+IIMethod::registerDisconElemFamilyForViscousJump(const unsigned int part,
+                                                 libMesh::FEFamily fe_family,
+                                                 libMesh::Order fe_order)
+{
+    TBOX_ASSERT(!d_fe_equation_systems_initialized);
+    TBOX_ASSERT(part < d_num_parts);
+    // Currently the jumps and traction use the same discontinuous FE representation.
+    // The acceptable options are either FIRST order L2_LAGRANGE or CONSTANT MONOMIAL.
+    if ((fe_family == L2_LAGRANGE && fe_order == FIRST) || (fe_family == MONOMIAL && fe_order == CONSTANT) ||
+        (fe_family == MONOMIAL && fe_order == FIRST))
+    {
+        d_viscous_jump_fe_family[part] = fe_family;
+        d_viscous_jump_fe_order[part] = fe_order;
+    }
+    else if (fe_family == LAGRANGE)
+    {
+        d_viscous_jump_fe_family[part] = d_fe_family[part];
+        d_viscous_jump_fe_order[part] = d_fe_order[part];
+    }
+    else
+    {
+        TBOX_ERROR("Unsupported FE family type: " << fe_family << " with FE order:" << fe_order
+                                                  << "for discontinuous viscous jumps \n");
+    }
+    return;
+} // registerDisconElemFamilyForViscousJump
 
 void
 IIMethod::registerTangentialVelocityMotion(const unsigned int part)
@@ -875,19 +933,22 @@ IIMethod::preprocessIntegrateData(double current_time, double new_time, int /*nu
                     dynamic_cast<PetscVector<double>*>(d_fe_data_managers[part]->buildGhostedSolutionVector(
                         VELOCITY_JUMP_SYSTEM_NAME[d], /*localize_data*/ false));
             }
-            d_WSS_in_systems[part] = &d_equation_systems[part]->get_system(WSS_IN_SYSTEM_NAME);
-            d_WSS_in_half_vecs[part] =
-                dynamic_cast<PetscVector<double>*>(d_WSS_in_systems[part]->current_local_solution.get());
-            d_WSS_in_IB_ghost_vecs[part] = dynamic_cast<PetscVector<double>*>(
-                d_fe_data_managers[part]->buildGhostedSolutionVector(WSS_IN_SYSTEM_NAME, /*localize_data*/ false));
+            if (d_use_u_interp_correction)
+            {
+                d_WSS_in_systems[part] = &d_equation_systems[part]->get_system(WSS_IN_SYSTEM_NAME);
+                d_WSS_in_half_vecs[part] =
+                    dynamic_cast<PetscVector<double>*>(d_WSS_in_systems[part]->current_local_solution.get());
+                d_WSS_in_IB_ghost_vecs[part] = dynamic_cast<PetscVector<double>*>(
+                    d_fe_data_managers[part]->buildGhostedSolutionVector(WSS_IN_SYSTEM_NAME, /*localize_data*/ false));
 
-            d_WSS_out_systems[part] = &d_equation_systems[part]->get_system(WSS_OUT_SYSTEM_NAME);
-            d_WSS_out_half_vecs[part] =
-                dynamic_cast<PetscVector<double>*>(d_WSS_out_systems[part]->current_local_solution.get());
-            d_WSS_out_IB_ghost_vecs[part] = dynamic_cast<PetscVector<double>*>(
-                d_fe_data_managers[part]->buildGhostedSolutionVector(WSS_OUT_SYSTEM_NAME, /*localize_data*/ false));
+                d_WSS_out_systems[part] = &d_equation_systems[part]->get_system(WSS_OUT_SYSTEM_NAME);
+                d_WSS_out_half_vecs[part] =
+                    dynamic_cast<PetscVector<double>*>(d_WSS_out_systems[part]->current_local_solution.get());
+                d_WSS_out_IB_ghost_vecs[part] = dynamic_cast<PetscVector<double>*>(
+                    d_fe_data_managers[part]->buildGhostedSolutionVector(WSS_OUT_SYSTEM_NAME, /*localize_data*/ false));
+            }
         }
-        if (d_use_velocity_jump_conditions && d_use_pressure_jump_conditions)
+        if (d_use_velocity_jump_conditions && d_use_pressure_jump_conditions && d_use_u_interp_correction)
         {
             d_TAU_in_systems[part] = &d_equation_systems[part]->get_system(TAU_IN_SYSTEM_NAME);
             d_TAU_in_half_vecs[part] =
@@ -935,11 +996,13 @@ IIMethod::preprocessIntegrateData(double current_time, double new_time, int /*nu
             {
                 *d_DU_jump_half_vecs[part][d] = *d_DU_jump_systems[part][d]->solution;
             }
-
-            *d_WSS_in_half_vecs[part] = *d_WSS_in_systems[part]->solution;
-            *d_WSS_out_half_vecs[part] = *d_WSS_out_systems[part]->solution;
+            if (d_use_u_interp_correction)
+            {
+                *d_WSS_in_half_vecs[part] = *d_WSS_in_systems[part]->solution;
+                *d_WSS_out_half_vecs[part] = *d_WSS_out_systems[part]->solution;
+            }
         }
-        if (d_use_velocity_jump_conditions && d_use_pressure_jump_conditions)
+        if (d_use_velocity_jump_conditions && d_use_pressure_jump_conditions && d_use_u_interp_correction)
         {
             *d_TAU_in_half_vecs[part] = *d_TAU_in_systems[part]->solution;
             *d_TAU_out_half_vecs[part] = *d_TAU_out_systems[part]->solution;
@@ -963,7 +1026,7 @@ IIMethod::postprocessIntegrateData(double /*current_time*/, double /*new_time*/,
         vec_collection_update.push_back(d_P_in_half_vecs);
         vec_collection_update.push_back(d_P_out_half_vecs);
     }
-    if (d_use_velocity_jump_conditions)
+    if (d_use_velocity_jump_conditions && d_use_u_interp_correction)
     {
         vec_collection_update.push_back(d_WSS_in_half_vecs);
         vec_collection_update.push_back(d_WSS_out_half_vecs);
@@ -1028,12 +1091,15 @@ IIMethod::postprocessIntegrateData(double /*current_time*/, double /*new_time*/,
                 *d_DU_jump_systems[part][d]->solution = *d_DU_jump_half_vecs[part][d];
                 *d_DU_jump_systems[part][d]->current_local_solution = *d_DU_jump_half_vecs[part][d];
             }
-            *d_WSS_in_systems[part]->solution = *d_WSS_in_half_vecs[part];
-            *d_WSS_in_systems[part]->current_local_solution = *d_WSS_in_half_vecs[part];
-            *d_WSS_out_systems[part]->solution = *d_WSS_out_half_vecs[part];
-            *d_WSS_out_systems[part]->current_local_solution = *d_WSS_out_half_vecs[part];
+            if (d_use_u_interp_correction)
+            {
+                *d_WSS_in_systems[part]->solution = *d_WSS_in_half_vecs[part];
+                *d_WSS_in_systems[part]->current_local_solution = *d_WSS_in_half_vecs[part];
+                *d_WSS_out_systems[part]->solution = *d_WSS_out_half_vecs[part];
+                *d_WSS_out_systems[part]->current_local_solution = *d_WSS_out_half_vecs[part];
+            }
         }
-        if (d_use_pressure_jump_conditions && d_use_velocity_jump_conditions)
+        if (d_use_pressure_jump_conditions && d_use_velocity_jump_conditions && d_use_u_interp_correction)
         {
             *d_TAU_in_systems[part]->solution = *d_TAU_in_half_vecs[part];
             *d_TAU_in_systems[part]->current_local_solution = *d_TAU_in_half_vecs[part];
@@ -1116,6 +1182,10 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                               const std::vector<Pointer<RefineSchedule<NDIM> > >& u_ghost_fill_scheds,
                               const double data_time)
 {
+    if (!d_use_velocity_jump_conditions && d_use_u_interp_correction)
+        TBOX_ERROR(
+            " use_velocity_jump_conditions must be also true "
+            "whenever use_u_interp_correction = true...\n");
     IBAMR_TIMER_START(t_interpolate_velocity);
     const double mu = getINSHierarchyIntegrator()->getStokesSpecifications()->getMu();
     const int finest_ln = d_hierarchy->getFinestLevelNumber();
@@ -1134,18 +1204,56 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         if (u_ghost_fill_sched) u_ghost_fill_sched->fillData(data_time);
     }
 
+    std::vector<std::vector<libMesh::PetscVector<double>*> > vec_collection_update = { d_X_IB_ghost_vecs };
+
+    if (MathUtilities<double>::equalEps(data_time, d_current_time))
+    {
+        vec_collection_update.push_back(d_X_current_vecs);
+        vec_collection_update.push_back(d_U_current_vecs);
+        vec_collection_update.push_back(d_U_n_current_vecs);
+        vec_collection_update.push_back(d_U_t_current_vecs);
+    }
+    else if (MathUtilities<double>::equalEps(data_time, d_half_time))
+    {
+        vec_collection_update.push_back(d_X_half_vecs);
+        vec_collection_update.push_back(d_U_half_vecs);
+        vec_collection_update.push_back(d_U_n_half_vecs);
+        vec_collection_update.push_back(d_U_t_half_vecs);
+    }
+    else if (MathUtilities<double>::equalEps(data_time, d_new_time))
+    {
+        vec_collection_update.push_back(d_X_new_vecs);
+        vec_collection_update.push_back(d_U_new_vecs);
+        vec_collection_update.push_back(d_U_n_new_vecs);
+        vec_collection_update.push_back(d_U_t_new_vecs);
+    }
+
+    if (d_use_u_interp_correction)
+    {
+        for (unsigned part = 0; part < d_num_parts; ++part)
+        {
+            for (unsigned int d = 0; d < NDIM; ++d)
+            {
+                vec_collection_update.push_back({ d_DU_jump_half_vecs[part][d], d_DU_jump_IB_ghost_vecs[part][d] });
+            }
+        }
+    }
+    batch_vec_ghost_update(vec_collection_update, INSERT_VALUES, SCATTER_FORWARD);
+
     for (unsigned int part = 0; part < d_num_parts; ++part)
     {
         NumericVector<double>* U_vec = nullptr;
         NumericVector<double>* U_n_vec = nullptr;
         NumericVector<double>* U_t_vec = nullptr;
         NumericVector<double>* X_vec = nullptr;
-        NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration,"ib_ghost",part);
+        NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(true,"ib_ghost",part);
+       
+
         const std::array<PetscVector<double>*, NDIM> DU_jump_ghost_vec = {
-            d_use_velocity_jump_conditions ? d_DU_jump_IB_ghost_vecs[part][0] : nullptr,
-            d_use_velocity_jump_conditions ? d_DU_jump_IB_ghost_vecs[part][1] : nullptr,
+            d_use_u_interp_correction ? d_DU_jump_IB_ghost_vecs[part][0] : nullptr,
+            d_use_u_interp_correction ? d_DU_jump_IB_ghost_vecs[part][1] : nullptr,
 #if (NDIM == 3)
-            d_use_velocity_jump_conditions ? d_DU_jump_IB_ghost_vecs[part][2] : nullptr,
+            d_use_u_interp_correction ? d_DU_jump_IB_ghost_vecs[part][2] : nullptr,
 #endif
         };
         if (MathUtilities<double>::equalEps(data_time, d_current_time))
@@ -1153,28 +1261,28 @@ IIMethod::interpolateVelocity(const int u_data_idx,
             U_vec = d_U_current_vecs[part];
             U_n_vec = d_U_n_current_vecs[part];
             U_t_vec = d_U_t_current_vecs[part];
-            X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration,"current",part);  //d_X_current_vecs[part];
+            X_vec = getMeshCoordinatesNumeric(true,"current",part);  //d_X_current_vecs[part];
         }
         else if (MathUtilities<double>::equalEps(data_time, d_half_time))
         {
             U_vec = d_U_half_vecs[part];
             U_n_vec = d_U_n_half_vecs[part];
             U_t_vec = d_U_t_half_vecs[part];
-            X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration,"current",part);  //d_X_current_vecs[part];
+            X_vec = getMeshCoordinatesNumeric(true,"current",part);  //d_X_current_vecs[part];
         }
         else if (MathUtilities<double>::equalEps(data_time, d_new_time))
         {
             U_vec = d_U_new_vecs[part];
             U_n_vec = d_U_n_new_vecs[part];
             U_t_vec = d_U_t_new_vecs[part];
-            X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration,"current",part);  //d_X_current_vecs[part];
+            X_vec = getMeshCoordinatesNumeric(true,"current",part);  //d_X_current_vecs[part];
         }
-        copy_and_synch(*X_vec, *X_ghost_vec);
+        copy_and_synch(*X_vec, *X_ghost_vec); //changed for reference config calculations
 
-        NumericVector<double>* WSS_in_vec = d_use_velocity_jump_conditions ? d_WSS_in_half_vecs[part] : nullptr;
-        NumericVector<double>* WSS_out_vec = d_use_velocity_jump_conditions ? d_WSS_out_half_vecs[part] : nullptr;
 
-        // Extract the mesh.
+        NumericVector<double>* WSS_in_vec = d_use_u_interp_correction ? d_WSS_in_half_vecs[part] : nullptr;
+        NumericVector<double>* WSS_out_vec = d_use_u_interp_correction ? d_WSS_out_half_vecs[part] : nullptr;
+
         EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
         const MeshBase& mesh = equation_systems->get_mesh();
         const unsigned int dim = mesh.mesh_dimension();
@@ -1187,8 +1295,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
             *d_fe_data_managers[part]->getDofMapCache(VELOCITY_SYSTEM_NAME);
         System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
         const DofMap& X_dof_map = X_system.get_dof_map();
-        FEDataManager::SystemDofMapCache& X_dof_map_cache =
-            *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
+        FEDataManager::SystemDofMapCache& X_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
         std::vector<std::vector<unsigned int> > U_dof_indices(NDIM);
         std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
         FEType U_fe_type = U_dof_map.variable_type(0);
@@ -1212,7 +1319,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         const DofMap* WSS_in_dof_map = NULL;
         FEDataManager::SystemDofMapCache* WSS_in_dof_map_cache = NULL;
 
-        if (d_use_velocity_jump_conditions)
+        if (d_use_u_interp_correction)
         {
             for (unsigned int i = 0; i < NDIM; ++i)
             {
@@ -1259,6 +1366,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         const std::vector<std::vector<double> >& phi_DU_jump = fe_DU_jump->get_phi();
 
         X_ghost_vec->close();
+
         //obtain the nodal normal vectors for phong shading -- only use for P1 elements
         if(d_use_phong_normals){
             setupPhongNormalVectors(true,part,X_ghost_vec);
@@ -1274,11 +1382,11 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         std::vector<DenseVector<double> > U_t_rhs_e(NDIM);
 
         std::unique_ptr<NumericVector<double> > WSS_out_rhs_vec =
-            (d_use_velocity_jump_conditions ? WSS_out_vec->zero_clone() : std::unique_ptr<NumericVector<double> >());
+            (d_use_u_interp_correction ? WSS_out_vec->zero_clone() : std::unique_ptr<NumericVector<double> >());
         DenseVector<double> WSS_out_rhs_e[NDIM];
 
         std::unique_ptr<NumericVector<double> > WSS_in_rhs_vec =
-            (d_use_velocity_jump_conditions ? WSS_in_vec->zero_clone() : std::unique_ptr<NumericVector<double> >());
+            (d_use_u_interp_correction ? WSS_in_vec->zero_clone() : std::unique_ptr<NumericVector<double> >());
         DenseVector<double> WSS_in_rhs_e[NDIM];
 
         boost::multi_array<double, 2> x_node;
@@ -1319,8 +1427,6 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                 x_lower_gh[d] = patch_x_lower[d] - (static_cast<double>(u_ghost_num)) * patch_dx[d];
                 x_upper_gh[d] = patch_x_upper[d] + (static_cast<double>(u_ghost_num)) * patch_dx[d];
             }
-            double* x_upper_ghost = &x_upper_gh[0];
-            double* x_lower_ghost = &x_lower_gh[0];
 
             // Setup vectors to store the values of U, DU_j, x, and n at the
             // quadrature points.
@@ -1333,6 +1439,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     X_dof_map_cache.dof_indices(elem, X_dof_indices[axis], axis);
                 }
                 get_values_for_interpolation(x_node, *X_ghost_vec, X_dof_indices);
+
                 FEDataManager::updateInterpQuadratureRule(qrule, d_default_interp_spec, elem, x_node, patch_dx_min);
                 n_qpoints_patch += qrule->n_points();
             }
@@ -1368,7 +1475,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     X_dof_map_cache.dof_indices(elem, X_dof_indices[d], d);
                 }
                 get_values_for_interpolation(x_node, *X_ghost_vec, X_dof_indices);
-                if (d_use_velocity_jump_conditions)
+                if (d_use_u_interp_correction)
                 {
                     for (unsigned int axis = 0; axis < NDIM; ++axis)
                     {
@@ -1384,12 +1491,13 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     FEDataManager::updateInterpQuadratureRule(qrule, d_default_interp_spec, elem, x_node, patch_dx_min);
                 if (qrule_changed) fe_X->attach_quadrature_rule(qrule.get());
                 fe_X->reinit(elem);
-                if (d_use_velocity_jump_conditions)
+                if (d_use_u_interp_correction)
                 {
                     if (qrule_changed) fe_DU_jump->attach_quadrature_rule(qrule.get());
                     fe_DU_jump->reinit(elem);
                 }
                 const unsigned int n_nodes = elem->n_nodes();
+                const unsigned int n_nodes_jump = d_use_u_interp_correction ? DU_jump_dof_indices[0][0].size() : 0.0;
                 const unsigned int n_qpoints = qrule->n_points();
 
                 // Zero out the values prior to accumulation.
@@ -1413,22 +1521,25 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                 // Interpolate x, du, and dv at the quadrature points via
                 // accumulation, e.g., x(qp) = sum_k x_k * phi_k(qp) for each
                 // qp.
-                for (unsigned int k = 0; k < n_nodes; ++k)
+                for (unsigned int qp = 0; qp < n_qpoints; ++qp)
                 {
-                    for (unsigned int qp = 0; qp < n_qpoints; ++qp)
+                    for (unsigned int d = 0; d < NDIM; ++d)
                     {
-                        const double& p = phi_X[k][qp];
-                        for (unsigned int d = 0; d < NDIM; ++d)
+                        for (unsigned int k = 0; k < n_nodes; ++k)
                         {
+                            const double& p = phi_X[k][qp];
                             x_qp[NDIM * (qp_offset + qp) + d] += x_node[k][d] * p;
                         }
-                        if (d_use_velocity_jump_conditions)
+                    }
+                    if (d_use_u_interp_correction)
+                    {
+                        for (unsigned int axis = 0; axis < NDIM; ++axis)
                         {
-                            const double& p2 = phi_DU_jump[k][qp];
-                            for (unsigned int axis = 0; axis < NDIM; ++axis)
+                            for (unsigned int d = 0; d < NDIM; ++d)
                             {
-                                for (unsigned int d = 0; d < NDIM; ++d)
+                                for (unsigned int k = 0; k < n_nodes_jump; ++k)
                                 {
+                                    const double& p2 = phi_DU_jump[k][qp];
                                     DU_jump_qp[axis][NDIM * (qp_offset + qp) + d] += DU_jump_node[axis][k][d] * p2;
                                 }
                             }
@@ -1436,7 +1547,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     }
                 }
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp){
-                n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi, part);
+                    n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi, part);
                     /*
                     for (unsigned int l = 0; l < NDIM - 1; ++l)
                     {
@@ -1475,12 +1586,12 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     U_qp, NDIM, x_qp, NDIM, u_cc_data, patch, interp_box, d_default_interp_spec.kernel_fcn);
             }
             Pointer<SideData<NDIM, double> > u_sc_data = u_data;
-            if (u_sc_data && !d_use_velocity_jump_conditions)
+            if (u_sc_data && !d_use_u_interp_correction)
             {
                 LEInteractor::interpolate(
                     U_qp, NDIM, x_qp, NDIM, u_sc_data, patch, interp_box, d_default_interp_spec.kernel_fcn);
             }
-            else if (u_sc_data && d_use_velocity_jump_conditions)
+            else if (u_sc_data && d_use_u_interp_correction)
             {
                 LEInteractor::interpolate(
                     U_in_qp, NDIM, x_in_qp, NDIM, u_sc_data, patch, ghost_box, d_default_interp_spec.kernel_fcn);
@@ -1497,22 +1608,13 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                 for (unsigned int k = 0; k < n_qpoints_patch; ++k)
                 {
                     const double* const x = &x_qp[NDIM * k];
-                    const Index<NDIM> i = IndexUtilities::getCellIndex(x, patch_geom, patch_box);
+                    const hier::Index<NDIM> i = IndexUtilities::getCellIndex(x, patch_geom, patch_box);
                     if (interp_box.contains(i)) local_indices.push_back(k);
-
-                    const double* const x_in = &x_in_qp[NDIM * k];
-                    const Index<NDIM> in = IndexUtilities::getCellIndex(
-                        x_in, x_lower_ghost, x_upper_ghost, patch_geom->getDx(), ghost_box.lower(), ghost_box.upper());
-
-                    const double* const x_out = &x_out_qp[NDIM * k];
-                    const Index<NDIM> out = IndexUtilities::getCellIndex(
-                        x_out, x_lower_ghost, x_upper_ghost, patch_geom->getDx(), ghost_box.lower(), ghost_box.upper());
-
                     // Some kind of assertation can be applied here using the indices of the cells away from the
                     // interfce
                 }
                 if (local_indices.empty()) continue;
-                Index<NDIM> ic_lower, ic_upper, ic_center;
+                hier::Index<NDIM> ic_lower, ic_upper, ic_center;
                 std::array<std::array<double, 2>, NDIM> w, wr;
                 std::vector<double> U_axis(n_qpoints_patch, 0.0);
                 std::vector<double> U_axis_o(n_qpoints_patch, 0.0);
@@ -1534,8 +1636,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     x_lower_axis[axis] -= 0.5 * patch_dx[axis];
                     x_upper_axis[axis] += 0.5 * patch_dx[axis];
 
-                    const Index<NDIM>& ilower = side_boxes[axis].lower();
-                    const Index<NDIM>& iupper = side_boxes[axis].upper();
+                    const hier::Index<NDIM>& ilower = side_boxes[axis].lower();
+                    const hier::Index<NDIM>& iupper = side_boxes[axis].upper();
 
                     typedef boost::multi_array_types::extent_range range;
                     boost::const_multi_array_ref<double, NDIM> u_sc_data_array(
@@ -1607,7 +1709,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         {
                             for (BoxIterator<NDIM> b(stencil_box); b; b++)
                             {
-                                const Index<NDIM>& ic = b();
+                                const hier::Index<NDIM>& ic = b();
                                 for (int j = 0; j < NDIM; ++j) wrc(j) = wr[j][ic_upper[j] - ic[j]];
 #if (NDIM == 2)
                                 interpCoeff[ic[0]][ic[1]][d] = (norm_vec * wrc) * norm_vec(d);
@@ -1622,7 +1724,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         {
                             for (BoxIterator<NDIM> b(stencil_box); b; b++)
                             {
-                                const Index<NDIM>& ic = b();
+                                const hier::Index<NDIM>& ic = b();
                                 for (int j = 0; j < NDIM; ++j) du_jump(j) = DU_jump_qp[d][s * NDIM + j];
 #if (NDIM == 2)
                                 coeff_vec =
@@ -1646,14 +1748,14 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
                         for (BoxIterator<NDIM> b(stencil_box); b; b++)
                         {
-                            const Index<NDIM>& ic = b();
+                            const hier::Index<NDIM>& ic = b();
 #if (NDIM == 2)
 
                             U_axis[s] +=
                                 w[0][ic[0] - ic_lower[0]] * w[1][ic[1] - ic_lower[1]] * u_sc_data_array[ic[0]][ic[1]];
                             const double nproj = n_qp[s * NDIM + 0] * wr[0][ic_upper[0] - ic[0]] +
                                                  n_qp[s * NDIM + 1] * wr[1][ic_upper[1] - ic[1]];
-                            if (d_use_velocity_jump_conditions)
+                            if (d_use_u_interp_correction)
                             {
                                 const double CC = (nproj > 0.0) ? Ujump[ic[0]][ic[1]][axis] : 0.0;
                                 U_axis[s] -= CC / mu;
@@ -1666,7 +1768,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                             const double nproj = n_qp[s * NDIM + 0] * wr[0][ic_upper[0] - ic[0]] +
                                                  n_qp[s * NDIM + 1] * wr[1][ic_upper[1] - ic[1]] +
                                                  n_qp[s * NDIM + 2] * wr[2][ic_upper[2] - ic[2]];
-                            if (d_use_velocity_jump_conditions)
+                            if (d_use_u_interp_correction)
                             {
                                 const double CC = (nproj > 0.0) ? Ujump[ic[0]][ic[1]][ic[2]][axis] : 0.0;
                                 U_axis[s] -= CC / mu;
@@ -1674,7 +1776,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 #endif
                         }
                     }
-                    if (d_use_velocity_jump_conditions)
+                    if (d_use_u_interp_correction)
                     {
                         for (unsigned int k = 0; k < local_indices.size(); ++k)
                         {
@@ -1720,7 +1822,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     U_n_rhs_e[d].resize(static_cast<int>(U_dof_indices[d].size()));
                     U_t_rhs_e[d].resize(static_cast<int>(U_dof_indices[d].size()));
                     X_dof_map_cache.dof_indices(elem, X_dof_indices[d], d);
-                    if (d_use_velocity_jump_conditions)
+                    if (d_use_u_interp_correction)
                     {
                         WSS_out_dof_map_cache->dof_indices(elem, WSS_out_dof_indices[d], d);
                         WSS_out_rhs_e[d].resize(static_cast<int>(WSS_out_dof_indices[d].size()));
@@ -1735,7 +1837,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                 if (qrule_changed) fe_X->attach_quadrature_rule(qrule.get());
 
                 fe_X->reinit(elem);
-                if (d_use_velocity_jump_conditions)
+                if (d_use_u_interp_correction)
                 {
                     if (qrule_changed)
                     {
@@ -1748,7 +1850,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                 const size_t n_basis_jump = WSS_in_dof_indices[0].size();
 
                 for (unsigned int qp = 0; qp < n_qpoints; ++qp)
-                {
+                {   
                     n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node, phi_X, dphi_dxi, part);
                     /*
                     for (unsigned int k = 0; k < NDIM - 1; ++k)
@@ -1765,7 +1867,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
                         U(d) = U_qp[NDIM * (qp_offset + qp) + d];
-                        if (d_use_velocity_jump_conditions)
+                        if (d_use_u_interp_correction)
                         {
                             WSS_in(d) = WSS_in_qp[NDIM * (qp_offset + qp) + d];
                             WSS_out(d) = WSS_out_qp[NDIM * (qp_offset + qp) + d];
@@ -1783,7 +1885,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                             U_t_rhs_e[d](k) += U_t(d) * p_JxW;
                         }
                     }
-                    if (d_use_velocity_jump_conditions)
+                    if (d_use_u_interp_correction)
                     {
                         for (unsigned int k = 0; k < n_basis_jump; ++k)
                         {
@@ -1804,7 +1906,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                     U_rhs_vec->add_vector(U_rhs_e[d], U_dof_indices[d]);
                     U_n_rhs_vec->add_vector(U_n_rhs_e[d], U_dof_indices[d]);
                     U_t_rhs_vec->add_vector(U_t_rhs_e[d], U_dof_indices[d]);
-                    if (d_use_velocity_jump_conditions)
+                    if (d_use_u_interp_correction)
                     {
                         WSS_out_dof_map->constrain_element_vector(WSS_out_rhs_e[d], WSS_out_dof_indices[d]);
                         WSS_out_rhs_vec->add_vector(WSS_out_rhs_e[d], WSS_out_dof_indices[d]);
@@ -1819,7 +1921,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         U_n_rhs_vec->close();
         U_t_rhs_vec->close();
 
-        if (d_use_velocity_jump_conditions)
+        if (d_use_u_interp_correction)
         {
             WSS_in_rhs_vec->close();
             d_fe_data_managers[part]->computeL2Projection(
@@ -1833,16 +1935,16 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         }
 
         // Solve for the nodal values.
-        d_fe_data_managers[part]->computeL2Projection(
-            *U_vec, *U_rhs_vec, VELOCITY_SYSTEM_NAME, d_default_interp_spec.use_consistent_mass_matrix);
+        d_fe_data_managers[part]->computeSmoothedL2Projection(
+            *U_vec, *U_rhs_vec, VELOCITY_SYSTEM_NAME, d_velocity_stabilization_eps);
         U_vec->close();
-        d_fe_data_managers[part]->computeL2Projection(
-            *U_n_vec, *U_n_rhs_vec, VELOCITY_SYSTEM_NAME, d_default_interp_spec.use_consistent_mass_matrix);
+        d_fe_data_managers[part]->computeSmoothedL2Projection(
+            *U_n_vec, *U_n_rhs_vec, VELOCITY_SYSTEM_NAME, d_velocity_stabilization_eps);
         U_n_vec->close();
-        d_fe_data_managers[part]->computeL2Projection(
-            *U_t_vec, *U_t_rhs_vec, VELOCITY_SYSTEM_NAME, d_default_interp_spec.use_consistent_mass_matrix);
+        d_fe_data_managers[part]->computeSmoothedL2Projection(
+            *U_t_vec, *U_t_rhs_vec, VELOCITY_SYSTEM_NAME, d_velocity_stabilization_eps);
         U_t_vec->close();
-        if (d_use_velocity_jump_conditions)
+        if (d_use_u_interp_correction)
         {
             for (unsigned int d = 0; d < NDIM; ++d) d_DU_jump_IB_ghost_vecs[part][d]->close();
         }
@@ -1883,17 +1985,17 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
 
     if (MathUtilities<double>::equalEps(data_time, d_current_time))
     {
-        X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "current", part); //d_X_current_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "current", part); //d_X_current_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_half_time))
     {
-        X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "half", part); //d_X_half_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_half_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_new_time))
     {
-        X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "half", part); //d_X_new_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_new_vecs[part];
     }
-    NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
+    NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(true, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
     copy_and_synch(*X_vec, *X_ghost_vec);
     //the following are used for phong shading
     if(d_use_phong_normals){
@@ -1984,8 +2086,6 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
     {
         TBOX_ASSERT(TAU_out_dof_map.variable_type(d) == TAU_out_fe_type);
     }
-
-    TBOX_ASSERT(P_in_fe_type == TAU_in_fe_type);
     TBOX_ASSERT(P_out_fe_type == P_in_fe_type);
 
     std::unique_ptr<FEBase> fe_X = FEBase::build(dim, X_fe_type);
@@ -1998,29 +2098,44 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
     std::unique_ptr<FEBase> fe_P = FEBase::build(dim, P_out_fe_type);
     const std::vector<std::vector<double> >& phi_P = fe_P->get_phi();
 
+    std::unique_ptr<FEBase> fe_tau = FEBase::build(dim, TAU_out_fe_type);
+    const std::vector<std::vector<double> >& phi_tau = fe_tau->get_phi();
+
+    std::unique_ptr<FEBase> fe_wss = FEBase::build(dim, WSS_out_fe_type);
+    const std::vector<std::vector<double> >& phi_wss = fe_wss->get_phi();
+
     X_ghost_vec->close();
+
     PetscVector<double>* X_petsc_vec = static_cast<PetscVector<double>*>(X_ghost_vec);
     Vec X_global_vec = X_petsc_vec->vec();
+
     Vec X_local_vec;
     VecGhostGetLocalForm(X_global_vec, &X_local_vec);
     double* X_local_soln;
     VecGetArray(X_local_vec, &X_local_soln);
-    //NumericVector<double>* X0_vec = getMeshCoordinatesNumeric(false, "reference", part);
 
-    std::unique_ptr<NumericVector<double> > X0_vec = X_petsc_vec->clone();
-    copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
+    NumericVector<double>* X0_vec = getMeshCoordinatesNumeric(false, "reference", part);
+
+    //std::unique_ptr<NumericVector<double> > X0_vec = X_petsc_vec->clone();
+    //copy_and_synch(X_system.get_vector("INITIAL_COORDINATES"), *X0_vec);
     X0_vec->close();
+
+
+
+
+
 
     const std::vector<std::vector<Elem*> >& active_patch_element_map =
         d_fe_data_managers[part]->getActivePatchElementMap();
 
-    boost::multi_array<double, 2> x_node, X_node, WSS_in_node, WSS_out_node, n_qp_node;
+    boost::multi_array<double, 2> x_node, X_node, WSS_in_node, WSS_out_node, n_qp_node, TAU_in_node, TAU_out_node;
     boost::multi_array<double, 1> P_in_node, P_out_node;
     std::vector<double> x_in_qp, x_out_qp, x_qp;
     std::vector<double> P_in_qp, P_out_qp, Normal_qp, WSS_in_qp, WSS_out_qp, TAU_in_qp, TAU_out_qp;
     std::array<VectorValue<double>, 2> dX_dxi, dx_dxi;
     VectorValue<double> n, N, x, X;
 
+    
     Pointer<PatchLevel<NDIM> > level =
         d_hierarchy->getPatchLevel(d_fe_data_managers[part]->getFinestPatchLevelNumber());
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
@@ -2070,7 +2185,8 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
         // Loop over the elements and compute the positions of the quadrature points.
         qrule.reset();
         unsigned int qp_offset = 0;
-        std::vector<libMesh::dof_id_type> dof_id_scratch;
+        std::vector<libMesh::dof_id_type> dof_id_scratch_P_in;
+        std::vector<libMesh::dof_id_type> dof_id_scratch_P_out;
         for (unsigned int e_idx = 0; e_idx < num_active_patch_elems; ++e_idx)
         {
             Elem* const elem = patch_elems[e_idx];
@@ -2082,10 +2198,11 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
             get_values_for_interpolation(x_node, *X_petsc_vec, X_local_soln, X_dof_indices);
             get_values_for_interpolation(WSS_in_node, *WSS_in_ghost_vec, WSS_in_dof_indices);
             get_values_for_interpolation(WSS_out_node, *WSS_out_ghost_vec, WSS_out_dof_indices);
-            copy_dof_ids_to_vector(0, P_in_dof_indices, dof_id_scratch);
-            get_values_for_interpolation(P_in_node, *P_in_ghost_vec, dof_id_scratch);
-            copy_dof_ids_to_vector(0, P_out_dof_indices, dof_id_scratch);
-            get_values_for_interpolation(P_out_node, *P_out_ghost_vec, dof_id_scratch);
+
+            copy_dof_ids_to_vector(0, P_in_dof_indices, dof_id_scratch_P_in);
+            get_values_for_interpolation(P_in_node, *P_in_ghost_vec, dof_id_scratch_P_in);
+            copy_dof_ids_to_vector(0, P_out_dof_indices, dof_id_scratch_P_out);
+            get_values_for_interpolation(P_out_node, *P_out_ghost_vec, dof_id_scratch_P_out);
             get_values_for_interpolation(X_node, *X0_vec, X_dof_indices);
 
             const bool qrule_changed =
@@ -2094,11 +2211,17 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
             {
                 fe_X->attach_quadrature_rule(qrule.get());
                 fe_P->attach_quadrature_rule(qrule.get());
+                fe_tau->attach_quadrature_rule(qrule.get());
+                fe_wss->attach_quadrature_rule(qrule.get());
             }
             fe_X->reinit(elem);
             fe_P->reinit(elem);
+            fe_tau->reinit(elem);
+            fe_wss->reinit(elem);
 
             const unsigned int n_node = elem->n_nodes();
+            const unsigned int n_node_wss = WSS_out_dof_indices[0].size();
+            const unsigned int n_node_p = P_in_dof_indices[0].size();
             const unsigned int n_qp = qrule->n_points();
 
             // Zero out the values of X, du, and dv prior to accumulation.
@@ -2126,13 +2249,20 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
             double* P_out_begin = &P_out_qp[qp_offset];
             std::fill(P_out_begin, P_out_begin + n_qp, 0.0);
 
+            //this next section will be used to evaluate the normal vectors,
+            //either with phong shading or element shading
+
+
+
+
+
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
 
                 n = IIMethod::evaluateNormalVectors(true, qp, false, elem, x_node,phi_X, dphi_dxi_X, part);
-                N = IIMethod::evaluateNormalVectors(false, qp, false, elem, X_node,phi_X, dphi_dxi_X, part);
+                N = IIMethod::evaluateNormalVectors(false, qp,false, elem, X_node,phi_X, dphi_dxi_X, part);
                 const double dA = N.norm();
                 N = N.unit();
                 const double da = n.norm();
@@ -2163,14 +2293,17 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
                     {
                         const double& p_X = phi_X[k][qp];
                         x_qp[NDIM * (qp_offset + qp) + i] += x_node[k][i] * p_X;
-                        const double& p_P = phi_P[k][qp];
+                    }
+                    for (unsigned int k = 0; k < n_node_wss; ++k)
+                    {
+                        const double& p_P = phi_wss[k][qp];
                         WSS_in_qp[NDIM * (qp_offset + qp) + i] += (da / dA) * WSS_in_node[k][i] * p_P;
                         WSS_out_qp[NDIM * (qp_offset + qp) + i] += (da / dA) * WSS_out_node[k][i] * p_P;
                     }
                     Normal_qp[NDIM * (qp_offset + qp) + i] = n(i);
                 }
 
-                for (unsigned int k = 0; k < n_node; ++k)
+                for (unsigned int k = 0; k < n_node_p; ++k)
                 {
                     const double& p_P = phi_P[k][qp];
                     P_in_qp[qp_offset + qp] += (da / dA) * P_in_node[k] * p_P;
@@ -2190,7 +2323,7 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
         for (unsigned int k = 0; k < n_qp_patch; ++k)
         {
             const double* const XX = &x_qp[NDIM * k];
-            const Index<NDIM> i = IndexUtilities::getCellIndex(XX, patch_geom, interp_box);
+            const hier::Index<NDIM> i = IndexUtilities::getCellIndex(XX, patch_geom, interp_box);
             if (interp_box.contains(i)) local_indices.push_back(k);
         }
 
@@ -2239,9 +2372,13 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
             {
                 fe_X->attach_quadrature_rule(qrule.get());
                 fe_P->attach_quadrature_rule(qrule.get());
+                fe_tau->attach_quadrature_rule(qrule.get());
+                fe_wss->attach_quadrature_rule(qrule.get());
             }
             fe_X->reinit(elem);
             fe_P->reinit(elem);
+            fe_tau->reinit(elem);
+            fe_wss->reinit(elem);
             const unsigned int n_qp = qrule->n_points();
             const size_t n_basis2 = TAU_out_dof_indices[0].size();
             for (unsigned int qp = 0; qp < n_qp; ++qp)
@@ -2249,7 +2386,7 @@ IIMethod::computeFluidTraction(const double data_time, unsigned int part)
                 const int idx = NDIM * (qp_offset + qp);
                 for (unsigned int k = 0; k < n_basis2; ++k)
                 {
-                    const double p_JxW = phi_P[k][qp] * JxW[qp];
+                    const double p_JxW = phi_tau[k][qp] * JxW[qp];
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         TAU_in_rhs_e[i](k) += TAU_in_qp[idx + i] * p_JxW;
@@ -2319,7 +2456,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
     NumericVector<double>* P_out_vec = d_P_out_half_vecs[part];
     NumericVector<double>* P_jump_ghost_vec = d_P_jump_IB_ghost_vecs[part];
     NumericVector<double>* X_vec = NULL;
-    NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
+    NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(true, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
 
     std::unique_ptr<NumericVector<double> > P_in_rhs_vec = (*P_in_vec).zero_clone();
     P_in_rhs_vec->zero();
@@ -2331,15 +2468,15 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
     if (MathUtilities<double>::equalEps(data_time, d_current_time))
     {
-        X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "current", part); //d_X_current_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "current", part); //d_X_current_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_half_time))
     {
-        X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "half", part); //d_X_half_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_half_vecs[part];
     }
     else if (MathUtilities<double>::equalEps(data_time, d_new_time))
     {
-        X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "new", part); //d_X_new_vecs[part];
+        X_vec = getMeshCoordinatesNumeric(true, "new", part); //d_X_new_vecs[part];
     }
     copy_and_synch(*X_vec, *X_ghost_vec);
 
@@ -2398,6 +2535,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
     VectorValue<double> tau1, tau2, n;
     X_ghost_vec->close();
+
     //setup nodal normals to be used with the phong vectors in current config
     if(d_use_phong_normals){
         setupPhongNormalVectors(true,part,X_ghost_vec);
@@ -2441,7 +2579,6 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
             x_lower_gh[d] = x_lower[d] - (static_cast<double>(p_ghost_num)) * dx[d];
             x_upper_gh[d] = x_upper[d] + (static_cast<double>(p_ghost_num)) * dx[d];
         }
-
         double* x_upper_ghost = x_upper_gh.data();
         double* x_lower_ghost = x_lower_gh.data();
 
@@ -2465,6 +2602,8 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 
             n_qp_patch += qrule->n_points();
         }
+
+
 
         if (!n_qp_patch) continue;
         P_jump_qp.resize(n_qp_patch);
@@ -2510,6 +2649,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
             fe_P->reinit(elem);
 
             const unsigned int n_node = elem->n_nodes();
+            const unsigned int n_node_jump = P_jump_dof_indices.size();
             const unsigned int n_qp = qrule->n_points();
 
             // Zero out the values of X, du, and dv prior to accumulation.
@@ -2558,7 +2698,7 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
                     x_in_qp[NDIM * (qp_offset + qp) + i] = x_qp[NDIM * (qp_offset + qp) + i] - n(i) * dh;
                     x_out_qp[NDIM * (qp_offset + qp) + i] = x_qp[NDIM * (qp_offset + qp) + i] + n(i) * dh;
                 }
-                for (unsigned int k = 0; k < n_node; ++k)
+                for (unsigned int k = 0; k < n_node_jump; ++k)
                 {
                     const double& p_P = phi_P[k][qp];
 
@@ -2592,18 +2732,18 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
         for (unsigned int k = 0; k < n_qp_patch; ++k)
         {
             const double* const xx = &x_qp[NDIM * k];
-            const Index<NDIM> i = IndexUtilities::getCellIndex(xx, patch_geom, interp_box);
+            const hier::Index<NDIM> i = IndexUtilities::getCellIndex(xx, patch_geom, interp_box);
             if (interp_box.contains(i)) local_indices.push_back(k);
 
             const double* const x_i = &x_in_qp[NDIM * k];
-            const Index<NDIM> ip = IndexUtilities::getCellIndex(
+            const hier::Index<NDIM> ip = IndexUtilities::getCellIndex(
                 x_i, x_lower_ghost, x_upper_ghost, patch_geom->getDx(), ghost_box.lower(), ghost_box.upper());
             if (!ghost_box.contains(ip) && interp_box.contains(i))
                 TBOX_ERROR(d_object_name << "::IIMethod():\n"
                                          << " the pressure interpolation ghost width hasn't beeen properly set"
                                          << std::endl);
             const double* const x_o = &x_out_qp[NDIM * k];
-            const Index<NDIM> op = IndexUtilities::getCellIndex(
+            const hier::Index<NDIM> op = IndexUtilities::getCellIndex(
                 x_o, x_lower_ghost, x_upper_ghost, patch_geom->getDx(), ghost_box.lower(), ghost_box.upper());
             if (!ghost_box.contains(op) && interp_box.contains(i))
                 TBOX_ERROR(d_object_name << "::IIMethod():\n"
@@ -2702,9 +2842,10 @@ IIMethod::extrapolatePressureForTraction(const int p_data_idx, const double data
 void
 IIMethod::calculateInterfacialFluidForces(const int p_data_idx, double data_time)
 {
-    if (d_compute_fluid_traction && (!d_use_pressure_jump_conditions || !d_use_velocity_jump_conditions))
+    if (d_compute_fluid_traction &&
+        (!d_use_pressure_jump_conditions || !d_use_velocity_jump_conditions || !d_use_u_interp_correction))
     {
-        TBOX_ERROR(d_object_name << ": To compute the traction both velocity and pressure jumps need to be turned on!"
+        TBOX_ERROR(d_object_name << ": To compute the traction all jump corrections need to be turned on!"
                                  << std::endl);
     }
 
@@ -2835,6 +2976,7 @@ IIMethod::computeLagrangianForce(const double data_time)
     batch_vec_ghost_update(d_X_half_vecs, INSERT_VALUES, SCATTER_FORWARD);
     for (unsigned part = 0; part < d_num_parts; ++part)
     {
+        //std::cout <<"entering lag force function\n";
         EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
         MeshBase& mesh = equation_systems->get_mesh();
         const unsigned int dim = mesh.mesh_dimension();
@@ -2846,7 +2988,7 @@ IIMethod::computeLagrangianForce(const double data_time)
         VectorValue<double>& F_integral = d_lag_surface_force_integral[part];
         F_integral.zero();
 
-        NumericVector<double>* X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "half", part); //d_X_half_vecs[part];
+        NumericVector<double>* X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_half_vecs[part];
         double surface_area = 0.0;
 
         NumericVector<double>* P_jump_vec = d_use_pressure_jump_conditions ? d_P_jump_half_vecs[part] : nullptr;
@@ -2891,11 +3033,11 @@ IIMethod::computeLagrangianForce(const double data_time)
             TBOX_ASSERT(X_dof_map.variable_type(d) == X_fe_type);
         }
         TBOX_ASSERT(X_fe_type == F_fe_type);
-        NumericVector<double>& X0_vec = X_system.get_vector("INITIAL_COORDINATES");
+        NumericVector<double>& X0_vec = X_system.get_vector("INITIAL_COORDINATES"); //don't touch this for now
         System* P_jump_system;
         const DofMap* P_jump_dof_map = NULL;
         FEDataManager::SystemDofMapCache* P_jump_dof_map_cache = NULL;
-        FEType P_jump_fe_type = INVALID_FE;
+        FEType P_jump_fe_type;
         if (d_use_pressure_jump_conditions)
         {
             P_jump_system = &equation_systems->get_system(PRESSURE_JUMP_SYSTEM_NAME);
@@ -2907,7 +3049,7 @@ IIMethod::computeLagrangianForce(const double data_time)
         std::array<System*, NDIM> DU_jump_system;
         std::array<DofMap*, NDIM> DU_jump_dof_map;
         std::array<FEDataManager::SystemDofMapCache*, NDIM> DU_jump_dof_map_cache;
-        FEType DU_jump_fe_type = INVALID_FE;
+        FEType DU_jump_fe_type;
         if (d_use_velocity_jump_conditions)
         {
             for (unsigned int i = 0; i < NDIM; ++i)
@@ -2924,13 +3066,6 @@ IIMethod::computeLagrangianForce(const double data_time)
                     TBOX_ASSERT(DU_jump_dof_map[i]->variable_type(j) == DU_jump_fe_type);
                 }
             }
-        }
-
-        // The P_jump_fe_type and DU_jump_fe_type are equal only if we are applying both jumps
-        // or none of the jumps.
-        if (d_use_pressure_jump_conditions && d_use_velocity_jump_conditions)
-        {
-            TBOX_ASSERT(P_jump_fe_type == DU_jump_fe_type);
         }
 
         std::unique_ptr<QBase> qrule = QBase::build(d_default_quad_type[part], dim, d_default_quad_order[part]);
@@ -3037,6 +3172,7 @@ IIMethod::computeLagrangianForce(const double data_time)
             {
                 interpolate(X, qp, X_node, phi_X);
                 interpolate(x, qp, x_node, phi_X);
+                
                 n = IIMethod::evaluateNormalVectors(true, qp, d_use_phong_normals, elem, x_node, phi_X, dphi_dxi_X, part); 
                 N = IIMethod::evaluateNormalVectors(false, qp, d_use_phong_normals, elem, X_node, phi_X, dphi_dxi_X, part);
                 const double dA = N.norm();
@@ -3207,10 +3343,8 @@ IIMethod::computeLagrangianForce(const double data_time)
         if (d_use_pressure_jump_conditions)
         {
             P_jump_rhs_vec->close();
-            d_fe_data_managers[part]->computeL2Projection(*P_jump_vec,
-                                                          *P_jump_rhs_vec,
-                                                          PRESSURE_JUMP_SYSTEM_NAME,
-                                                          d_default_interp_spec.use_consistent_mass_matrix);
+            d_fe_data_managers[part]->computeSmoothedL2Projection(
+                *P_jump_vec, *P_jump_rhs_vec, PRESSURE_JUMP_SYSTEM_NAME, d_force_stabilization_eps);
             P_jump_rhs_integral = SAMRAI_MPI::sumReduction(P_jump_rhs_integral);
             surface_area = SAMRAI_MPI::sumReduction(surface_area);
             if (d_normalize_pressure_jump[part]) P_jump_vec->add(-P_jump_rhs_integral / surface_area);
@@ -3221,10 +3355,8 @@ IIMethod::computeLagrangianForce(const double data_time)
             for (unsigned int d = 0; d < NDIM; ++d)
             {
                 DU_jump_rhs_vec[d]->close();
-                d_fe_data_managers[part]->computeL2Projection(*DU_jump_vec[d],
-                                                              *DU_jump_rhs_vec[d],
-                                                              VELOCITY_JUMP_SYSTEM_NAME[d],
-                                                              d_default_interp_spec.use_consistent_mass_matrix);
+                d_fe_data_managers[part]->computeSmoothedL2Projection(
+                    *DU_jump_vec[d], *DU_jump_rhs_vec[d], VELOCITY_JUMP_SYSTEM_NAME[d], d_force_stabilization_eps);
                 DU_jump_vec[d]->close();
             }
         }
@@ -3267,14 +3399,14 @@ IIMethod::spreadForce(const int f_data_idx,
 
     for (unsigned int part = 0; part < d_num_parts; ++part)
     {
-        PetscVector<double>* X_vec = getMeshCoordinatesPetsc(d_use_current_mesh_configuration, "half", part); //d_X_half_vecs[part];
-        PetscVector<double>* X_ghost_vec = getMeshCoordinatesPetsc(d_use_current_mesh_configuration, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
+        PetscVector<double>* X_vec = getMeshCoordinatesPetsc(true, "half", part); //d_X_half_vecs[part];
+        PetscVector<double>* X_ghost_vec = getMeshCoordinatesPetsc(true, "ib_ghost", part); //d_X_IB_ghost_vecs[part];
         PetscVector<double>* F_vec = d_F_half_vecs[part];
         PetscVector<double>* F_ghost_vec = d_F_IB_ghost_vecs[part];
         X_vec->localize(*X_ghost_vec);
         F_vec->localize(*F_ghost_vec);
-        d_fe_data_managers[part]->spread(
-            f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
+        d_fe_data_managers[part]->spread(f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
+
         PetscVector<double>* P_jump_vec;
         PetscVector<double>* P_jump_ghost_vec = NULL;
         std::array<PetscVector<double>*, NDIM> DU_jump_ghost_vec;
@@ -3294,7 +3426,6 @@ IIMethod::spreadForce(const int f_data_idx,
                 DU_jump_vec[d]->localize(*DU_jump_ghost_vec[d]);
             }
         }
-
         if (d_use_pressure_jump_conditions || d_use_velocity_jump_conditions)
         {
             imposeJumpConditions(f_data_idx, *P_jump_ghost_vec, DU_jump_ghost_vec, *X_ghost_vec, data_time, part);
@@ -3380,7 +3511,7 @@ IIMethod::initializeFEEquationSystems()
                                                              min_ghost_width,
                                                              d_eulerian_data_cache);
         d_ghosts = IntVector<NDIM>::max(d_ghosts, d_fe_data_managers[part]->getGhostCellWidth());
-        d_fe_data_managers[part]->COORDINATES_SYSTEM_NAME = COORDS_SYSTEM_NAME;
+        d_fe_data_managers[part]->setCurrentCoordinatesSystemName(COORDS_SYSTEM_NAME);
         if (from_restart)
         {
             const std::string& file_name = libmesh_restart_file_name(
@@ -3393,53 +3524,61 @@ IIMethod::initializeFEEquationSystems()
         else
         {
             // vector FE systems:
-            std::vector<std::string> vector_system_names
-                {COORDS_SYSTEM_NAME, COORD_MAPPING_SYSTEM_NAME,
-                 VELOCITY_SYSTEM_NAME, NORMAL_VELOCITY_SYSTEM_NAME,
-                 TANGENTIAL_VELOCITY_SYSTEM_NAME, FORCE_SYSTEM_NAME};
-            std::vector<std::string> vector_variable_prefixes {"X", "dX", "U", "U_n", "U_t", "F"};
+            std::vector<std::string> vector_system_names{
+                COORDS_SYSTEM_NAME,          COORD_MAPPING_SYSTEM_NAME,       VELOCITY_SYSTEM_NAME,
+                NORMAL_VELOCITY_SYSTEM_NAME, TANGENTIAL_VELOCITY_SYSTEM_NAME, FORCE_SYSTEM_NAME
+            };
+            std::vector<std::string> vector_variable_prefixes{ "X", "dX", "U", "U_n", "U_t", "F" };
             std::vector<libMesh::FEFamily> vector_fe_family(vector_system_names.size(), d_fe_family[part]);
+            std::vector<libMesh::Order> vector_fe_order(vector_system_names.size(), d_fe_order[part]);
 
             if (d_use_velocity_jump_conditions)
             {
-                const auto jump_family = d_use_discon_elem_for_jumps[part] ? d_velocity_jump_fe_family : d_fe_family[part];
                 for (unsigned int d = 0; d < NDIM; ++d)
                 {
                     vector_system_names.push_back(VELOCITY_JUMP_SYSTEM_NAME[d]);
                     vector_variable_prefixes.push_back("DU_jump_" + std::to_string(d));
-                    vector_fe_family.push_back(jump_family);
+                    vector_fe_family.push_back(d_viscous_jump_fe_family[part]);
+                    vector_fe_order.push_back(d_viscous_jump_fe_order[part]);
                 }
+                if (d_use_u_interp_correction)
+                {
+                    vector_system_names.push_back(WSS_IN_SYSTEM_NAME);
+                    vector_variable_prefixes.push_back("WSS_in");
+                    vector_fe_family.push_back(d_viscous_jump_fe_family[part]);
+                    vector_fe_order.push_back(d_viscous_jump_fe_order[part]);
 
-                vector_system_names.push_back(WSS_IN_SYSTEM_NAME);
-                vector_variable_prefixes.push_back("WSS_in");
-                vector_fe_family.push_back(jump_family);
-
-                vector_system_names.push_back(WSS_OUT_SYSTEM_NAME);
-                vector_variable_prefixes.push_back("WSS_out");
-                vector_fe_family.push_back(jump_family);
-
-                if (d_use_pressure_jump_conditions)
+                    vector_system_names.push_back(WSS_OUT_SYSTEM_NAME);
+                    vector_variable_prefixes.push_back("WSS_out");
+                    vector_fe_family.push_back(d_viscous_jump_fe_family[part]);
+                    vector_fe_order.push_back(d_viscous_jump_fe_order[part]);
+                }
+                if (d_use_pressure_jump_conditions && d_use_u_interp_correction)
                 {
                     vector_system_names.push_back(TAU_IN_SYSTEM_NAME);
                     vector_variable_prefixes.push_back("TAU_IN");
-                    vector_fe_family.push_back(jump_family);
+                    vector_fe_family.push_back(d_traction_fe_family[part]);
+                    vector_fe_order.push_back(d_traction_fe_order[part]);
 
                     vector_system_names.push_back(TAU_OUT_SYSTEM_NAME);
                     vector_variable_prefixes.push_back("TAU_OUT");
-                    vector_fe_family.push_back(jump_family);
+                    vector_fe_family.push_back(d_traction_fe_family[part]);
+                    vector_fe_order.push_back(d_traction_fe_order[part]);
                 }
             }
 
             for (std::size_t i = 0; i < vector_system_names.size(); ++i)
             {
-                auto &system = equation_systems->add_system<System>(vector_system_names[i]);
+                auto& system = equation_systems->add_system<System>(vector_system_names[i]);
                 for (unsigned int d = 0; d < NDIM; ++d)
                 {
-                    system.add_variable(vector_variable_prefixes[i] + "_" + std::to_string(d), d_fe_order[part], vector_fe_family[i]);
+                    system.add_variable(
+                        vector_variable_prefixes[i] + "_" + std::to_string(d), vector_fe_order[i], vector_fe_family[i]);
                 }
             }
 
-            equation_systems->get_system(COORDS_SYSTEM_NAME).add_vector("INITIAL_COORDINATES", /*projections*/ true, GHOSTED);
+            equation_systems->get_system(COORDS_SYSTEM_NAME)
+                .add_vector("INITIAL_COORDINATES", /*projections*/ true, GHOSTED);
 
             // scalar FE systems:
             if (d_use_pressure_jump_conditions)
@@ -3447,18 +3586,9 @@ IIMethod::initializeFEEquationSystems()
                 System& P_jump_system = equation_systems->add_system<System>(PRESSURE_JUMP_SYSTEM_NAME);
                 System& P_in_system = equation_systems->add_system<System>(PRESSURE_IN_SYSTEM_NAME);
                 System& P_out_system = equation_systems->add_system<System>(PRESSURE_OUT_SYSTEM_NAME);
-                if (d_use_discon_elem_for_jumps[part])
-                {
-                    P_jump_system.add_variable("P_jump_", d_fe_order[part], d_pressure_jump_fe_family);
-                    P_in_system.add_variable("P_in_", d_fe_order[part], d_pressure_jump_fe_family);
-                    P_out_system.add_variable("P_out_", d_fe_order[part], d_pressure_jump_fe_family);
-                }
-                else
-                {
-                    P_jump_system.add_variable("P_jump_", d_fe_order[part], d_fe_family[part]);
-                    P_in_system.add_variable("P_in_", d_fe_order[part], d_fe_family[part]);
-                    P_out_system.add_variable("P_out_", d_fe_order[part], d_fe_family[part]);
-                }
+                P_jump_system.add_variable("P_jump_", d_pressure_jump_fe_order[part], d_pressure_jump_fe_family[part]);
+                P_in_system.add_variable("P_in_", d_pressure_jump_fe_order[part], d_pressure_jump_fe_family[part]);
+                P_out_system.add_variable("P_out_", d_pressure_jump_fe_order[part], d_pressure_jump_fe_family[part]);
             }
         }
 
@@ -3542,16 +3672,19 @@ IIMethod::initializeFEData()
                 DU_jump_system[d]->assemble_before_solve = false;
                 DU_jump_system[d]->assemble();
             }
-            System& WSS_in_system = equation_systems->get_system<System>(WSS_IN_SYSTEM_NAME);
-            WSS_in_system.assemble_before_solve = false;
-            WSS_in_system.assemble();
+            if (d_use_u_interp_correction)
+            {
+                System& WSS_in_system = equation_systems->get_system<System>(WSS_IN_SYSTEM_NAME);
+                WSS_in_system.assemble_before_solve = false;
+                WSS_in_system.assemble();
 
-            System& WSS_out_system = equation_systems->get_system<System>(WSS_OUT_SYSTEM_NAME);
-            WSS_out_system.assemble_before_solve = false;
-            WSS_out_system.assemble();
+                System& WSS_out_system = equation_systems->get_system<System>(WSS_OUT_SYSTEM_NAME);
+                WSS_out_system.assemble_before_solve = false;
+                WSS_out_system.assemble();
+            }
         }
 
-        if (d_use_pressure_jump_conditions && d_use_velocity_jump_conditions)
+        if (d_use_pressure_jump_conditions && d_use_velocity_jump_conditions && d_use_u_interp_correction)
         {
             System& TAU_in_system = equation_systems->get_system<System>(TAU_IN_SYSTEM_NAME);
             TAU_in_system.assemble_before_solve = false;
@@ -3624,8 +3757,9 @@ IIMethod::addWorkloadEstimate(Pointer<PatchHierarchy<NDIM> > hierarchy, const in
     return;
 } // addWorkloadEstimate
 
-void IIMethod::beginDataRedistribution(Pointer<PatchHierarchy<NDIM> > /*hierarchy*/,
-                                       Pointer<GriddingAlgorithm<NDIM> > /*gridding_alg*/)
+void
+IIMethod::beginDataRedistribution(Pointer<PatchHierarchy<NDIM> > /*hierarchy*/,
+                                  Pointer<GriddingAlgorithm<NDIM> > /*gridding_alg*/)
 {
     IBAMR_TIMER_START(t_begin_data_redistribution);
     // intentionally blank
@@ -3633,8 +3767,9 @@ void IIMethod::beginDataRedistribution(Pointer<PatchHierarchy<NDIM> > /*hierarch
     return;
 } // beginDataRedistribution
 
-void IIMethod::endDataRedistribution(Pointer<PatchHierarchy<NDIM> > /*hierarchy*/,
-                                     Pointer<GriddingAlgorithm<NDIM> > /*gridding_alg*/)
+void
+IIMethod::endDataRedistribution(Pointer<PatchHierarchy<NDIM> > /*hierarchy*/,
+                                Pointer<GriddingAlgorithm<NDIM> > /*gridding_alg*/)
 {
     IBAMR_TIMER_START(t_end_data_redistribution);
     if (d_is_initialized)
@@ -3748,7 +3883,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                const double /*data_time*/,
                                const unsigned int part)
 {
-    NumericVector<double>* x_current_vec = dynamic_cast<NumericVector<double>*>(&X_ghost_vec);
+    NumericVector<double>* x_current_vec = dynamic_cast<NumericVector<double>*>(&X_ghost_vec); //this looks important for changing things to ref config
     // Extract the mesh.
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
     const MeshBase& mesh = equation_systems->get_mesh();
@@ -3802,6 +3937,10 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
     std::unique_ptr<FEBase> fe_P_jump = FEBase::build(dim, P_jump_fe_type);
     const std::vector<std::vector<double> >& phi_P_jump = fe_P_jump->get_phi();
 
+    FEType fe_DU_jump_type = DU_jump_fe_type;
+    std::unique_ptr<FEBase> fe_DU_jump = FEBase::build(dim, fe_DU_jump_type);
+    const std::vector<std::vector<double> >& phi_DU_jump = fe_DU_jump->get_phi();
+
     // Loop over the patches to impose jump conditions on the Eulerian grid.
     const std::vector<std::vector<Elem*> >& active_patch_element_map =
         d_fe_data_managers[part]->getActivePatchElementMap();
@@ -3816,10 +3955,12 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
     Pointer<PatchLevel<NDIM> > level = d_hierarchy->getPatchLevel(level_num);
     const IntVector<NDIM>& ratio = level->getRatio();
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
-        //obtain the nodal normal vectors for phong shading -- only use for P1 elements
+
+    //obtain the nodal normal vectors for phong shading -- only use for P1 elements
     if(d_use_phong_normals){
         setupPhongNormalVectors(true,part,x_current_vec);
     }
+
     int local_patch_num = 0;
     for (PatchLevel<NDIM>::Iterator p(level); p; p++, ++local_patch_num)
     {
@@ -3917,7 +4058,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                         {
                             const double x_s =
                                 x_lower[d] + dx[d] * (static_cast<double>(i_s - patch_lower[d]) + 0.5 * shift);
-                            const double tol = 1.0e-4 * dx[d];
+                            const double tol = d_mesh_perturb_tol * dx[d];
                             if (x(d) <= x_s) x(d) = std::min(x_s - tol, x(d));
                             if (x(d) >= x_s) x(d) = std::max(x_s + tol, x(d));
                         }
@@ -4020,6 +4161,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                 std::vector<libMesh::Point> ref_coords(1, xi);
                                 fe_X->reinit(elem, &ref_coords);
                                 fe_P_jump->reinit(elem, &ref_coords);
+                                
                                 n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
 
                                 /*
@@ -4095,7 +4237,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                             libMesh::Point xu = r + intersections[k].first * q;
                             const libMesh::Point& xui = intersections[k].second;
                             SideIndex<NDIM> i_s_um(i_c, axis, 0);
-                            Index<NDIM> i_c_neighbor = i_c;
+                            hier::Index<NDIM> i_c_neighbor = i_c;
                             i_c_neighbor(axis) += 1;
 
                             SideIndex<NDIM> i_s_up(i_c_neighbor, axis, 0);
@@ -4108,7 +4250,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                             {
                                 std::vector<libMesh::Point> ref_coords(1, xui);
                                 fe_X->reinit(elem, &ref_coords);
-                                fe_P_jump->reinit(elem, &ref_coords);
+                                fe_DU_jump->reinit(elem, &ref_coords);
+                                
                                 n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
                                 /*
                                 for (unsigned int l = 0; l < NDIM - 1; ++l)
@@ -4173,7 +4316,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                         double C_u_um = 0;
                                         double C_u_up = 0;
 
-                                        interpolate(&jn(0), 0, DU_jump_node[axis], phi_P_jump);
+                                        interpolate(&jn(0), 0, DU_jump_node[axis], phi_DU_jump);
                                         C_u_up = sdh_up * jn(axis);
                                         C_u_um = sdh_um * jn(axis);
 
@@ -4206,7 +4349,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     if (fmod(xu(axis) - x_lower[axis], dx[axis]) >= 0.5 * dx[axis])
                                     {
                                         SideIndex<NDIM> i_side_um(i_c, SideDim[axis][j], 0);
-                                        Index<NDIM> i_c_neighbor = i_c;
+                                        hier::Index<NDIM> i_c_neighbor = i_c;
                                         i_c_neighbor(axis) += 1;
 
                                         SideIndex<NDIM> i_side_up(i_c_neighbor, SideDim[axis][j], 0);
@@ -4222,7 +4365,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     else if (fmod((xu(axis) - x_lower[axis]), dx[axis]) < 0.5 * dx[axis])
                                     {
                                         SideIndex<NDIM> i_side_up(i_c, SideDim[axis][j], 0);
-                                        Index<NDIM> i_c_neighbor = i_c;
+                                        hier::Index<NDIM> i_c_neighbor = i_c;
                                         i_c_neighbor(axis) -= 1;
                                         SideIndex<NDIM> i_side_um(i_c_neighbor, SideDim[axis][j], 0);
                                         i_side_up(axis) =
@@ -4244,7 +4387,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     if (fmod(fabs(xu(axis) - x_lower[axis]), dx[axis]) < 0.5 * dx[axis])
                                     {
                                         SideIndex<NDIM> i_side_um(i_c, SideDim[axis][j], 0);
-                                        Index<NDIM> i_c_neighbor = i_c;
+                                        hier::Index<NDIM> i_c_neighbor = i_c;
                                         i_c_neighbor(axis) += 1;
 
                                         SideIndex<NDIM> i_side_up(i_c_neighbor, SideDim[axis][j], 0);
@@ -4260,7 +4403,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     else
                                     {
                                         SideIndex<NDIM> i_side_up(i_c, SideDim[axis][j], 0);
-                                        Index<NDIM> i_c_neighbor = i_c;
+                                        hier::Index<NDIM> i_c_neighbor = i_c;
                                         i_c_neighbor(axis) -= 1;
                                         SideIndex<NDIM> i_side_um(i_c_neighbor, SideDim[axis][j], 0);
                                         i_side_up(axis) =
@@ -4284,7 +4427,8 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                     TBOX_ASSERT(i_s_up(axis) - i_s_um(axis) == 1);
                                     std::vector<libMesh::Point> ref_coords(1, xui);
                                     fe_X->reinit(elem, &ref_coords);
-                                    fe_P_jump->reinit(elem, &ref_coords);
+                                    fe_DU_jump->reinit(elem, &ref_coords);
+                                    
                                     n = IIMethod::evaluateNormalVectors(true, 0, false, elem, x_node, phi_X, dphi_dxi, part);
 
                                     /*
@@ -4350,7 +4494,7 @@ IIMethod::imposeJumpConditions(const int f_data_idx,
                                             double C_u_um = 0;
                                             double C_u_up = 0;
 
-                                            interpolate(&jn(0), 0, DU_jump_node[SideDim[axis][j]], phi_P_jump);
+                                            interpolate(&jn(0), 0, DU_jump_node[SideDim[axis][j]], phi_DU_jump);
                                             C_u_um = sdh_um * jn(axis);
                                             C_u_up = sdh_up * jn(axis);
 
@@ -4403,7 +4547,7 @@ IIMethod::checkDoubleCountingIntersection(const int axis,
         const libMesh::Point& xi_prime = *xi_prime_it;
         const libMesh::Point& n_prime = *n_prime_it;
         // TODO: Do not use a hard-coded magic number?
-        if (x.absolute_fuzzy_equals(x_prime, 1.0e-5 * dx[axis]))
+        if (x.absolute_fuzzy_equals(x_prime, d_fuzzy_tol * dx[axis]))
         {
             // WARNING: This check is ONLY
             // guaranteed to work at edges (where
@@ -4583,6 +4727,12 @@ IIMethod::commonConstructor(const std::string& object_name,
 
     d_fe_family.resize(d_num_parts, INVALID_FE);
     d_fe_order.resize(d_num_parts, INVALID_ORDER);
+    d_pressure_jump_fe_family.resize(d_num_parts, INVALID_FE);
+    d_pressure_jump_fe_order.resize(d_num_parts, INVALID_ORDER);
+    d_viscous_jump_fe_family.resize(d_num_parts, INVALID_FE);
+    d_viscous_jump_fe_order.resize(d_num_parts, INVALID_ORDER);
+    d_traction_fe_family.resize(d_num_parts, INVALID_FE);
+    d_traction_fe_order.resize(d_num_parts, INVALID_ORDER);
     d_default_quad_type.resize(d_num_parts, INVALID_Q_RULE);
     d_default_quad_order.resize(d_num_parts, INVALID_ORDER);
 
@@ -4595,7 +4745,6 @@ IIMethod::commonConstructor(const std::string& object_name,
 
     d_use_tangential_velocity.resize(d_num_parts);
     d_normalize_pressure_jump.resize(d_num_parts);
-    d_use_discon_elem_for_jumps.resize(d_num_parts);
 
     // Determine whether we should use first-order or second-order shape
     // functions for each part of the structure.
@@ -4606,6 +4755,7 @@ IIMethod::commonConstructor(const std::string& object_name,
         d_current_nodal_normals.emplace_back(mesh.n_nodes(), 3);
         d_weights.emplace_back(mesh.n_nodes(), mesh.n_elem());
         d_elem_normals.emplace_back(mesh.n_elem(), 3);
+
         bool mesh_has_first_order_elems = false;
         bool mesh_has_second_order_elems = false;
         auto el_it = mesh.elements_begin();
@@ -4638,6 +4788,12 @@ IIMethod::commonConstructor(const std::string& object_name,
             d_fe_order[part] = SECOND;
             d_default_quad_order[part] = FIFTH;
         }
+        d_pressure_jump_fe_family[part] = d_fe_family[part];
+        d_pressure_jump_fe_order[part] = d_fe_order[part];
+        d_viscous_jump_fe_family[part] = d_fe_family[part];
+        d_viscous_jump_fe_order[part] = d_fe_order[part];
+        d_traction_fe_family[part] = d_fe_family[part];
+        d_traction_fe_order[part] = d_fe_order[part];
 
         // Report configuration.
         pout << "\n";
@@ -4713,10 +4869,9 @@ IIMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
         d_default_interp_spec.use_nodal_quadrature = db->getBool("interp_use_nodal_quadrature");
     else if (db->isBool("IB_use_nodal_quadrature"))
         d_default_interp_spec.use_nodal_quadrature = db->getBool("IB_use_nodal_quadrature");
+
     if (db->isBool("use_phong_normals"))
         d_use_phong_normals = db-> getBool("use_phong_normals");
-    if (db->isBool("use_current_mesh_configuration"))
-        d_use_current_mesh_configuration = db -> getBool("use_current_mesh_configuration");
 
     // Spreading settings.
     if (db->isString("spread_delta_fcn"))
@@ -4756,32 +4911,28 @@ IIMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     // Force computation settings.
     if (db->isBool("use_pressure_jump_conditions"))
         d_use_pressure_jump_conditions = db->getBool("use_pressure_jump_conditions");
-    if (d_use_pressure_jump_conditions)
-    {
-        if (db->isString("pressure_jump_fe_family"))
-            d_pressure_jump_fe_family = Utility::string_to_enum<FEFamily>(db->getString("pressure_jump_fe_family"));
-    }
 
     if (db->isBool("use_velocity_jump_conditions"))
+    {
         d_use_velocity_jump_conditions = db->getBool("use_velocity_jump_conditions");
-    if (d_use_velocity_jump_conditions)
-    {
-        if (db->isDouble("wss_calc_width")) d_wss_calc_width = db->getDouble("wss_calc_width");
-        if (db->isString("velocity_jump_fe_family"))
-            d_velocity_jump_fe_family = Utility::string_to_enum<FEFamily>(db->getString("velocity_jump_fe_family"));
-        if (db->isString("wss_fe_family"))
-            d_wss_fe_family = Utility::string_to_enum<FEFamily>(db->getString("wss_fe_family"));
+        d_use_u_interp_correction = true;
     }
-    if (d_use_pressure_jump_conditions && d_use_velocity_jump_conditions)
+    if (db->isBool("use_u_interp_correction")) d_use_u_interp_correction = db->getBool("use_u_interp_correction");
+    if (d_use_velocity_jump_conditions && d_use_u_interp_correction)
     {
         if (db->isDouble("wss_calc_width")) d_wss_calc_width = db->getDouble("wss_calc_width");
-        if (db->isString("tau_fe_family"))
-            d_tau_fe_family = Utility::string_to_enum<FEFamily>(db->getString("tau_fe_family"));
+    }
+    if (d_use_pressure_jump_conditions && d_use_velocity_jump_conditions && d_use_u_interp_correction)
+    {
+        if (db->isDouble("wss_calc_width")) d_wss_calc_width = db->getDouble("wss_calc_width");
     }
     if (d_use_pressure_jump_conditions || d_use_velocity_jump_conditions)
     {
         if (db->isBool("perturb_fe_mesh_nodes")) d_perturb_fe_mesh_nodes = db->getBool("perturb_fe_mesh_nodes");
+        if (db->isDouble("mesh_perturb_tol")) d_mesh_perturb_tol = db->getDouble("mesh_perturb_tol");
+        if (db->isDouble("fuzzy_tol")) d_fuzzy_tol = db->getDouble("fuzzy_tol");
     }
+
     if (db->isBool("compute_fluid_traction")) d_compute_fluid_traction = db->getBool("compute_fluid_traction");
     if (d_compute_fluid_traction)
     {
@@ -4791,6 +4942,10 @@ IIMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     if (db->isBool("use_consistent_mass_matrix"))
         d_use_consistent_mass_matrix = db->getBool("use_consistent_mass_matrix");
     if (db->isBool("use_direct_forcing")) d_use_direct_forcing = db->getBool("use_direct_forcing");
+
+    if (db->isDouble("force_stabilization_eps")) d_force_stabilization_eps = db->getDouble("force_stabilization_eps");
+    if (db->isDouble("velocity_stabilization_eps"))
+        d_velocity_stabilization_eps = db->getDouble("velocity_stabilization_eps");
 
     // Restart settings.
     if (db->isString("libmesh_restart_file_extension"))
