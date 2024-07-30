@@ -2846,7 +2846,7 @@ IIMethod::computeLagrangianForce(const double data_time)
         VectorValue<double>& F_integral = d_lag_surface_force_integral[part];
         F_integral.zero();
 
-        NumericVector<double>* X_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration, "half", part); //d_X_half_vecs[part];
+        NumericVector<double>* X_vec = getMeshCoordinatesNumeric(true, "half", part); //d_X_half_vecs[part];
         double surface_area = 0.0;
 
         NumericVector<double>* P_jump_vec = d_use_pressure_jump_conditions ? d_P_jump_half_vecs[part] : nullptr;
