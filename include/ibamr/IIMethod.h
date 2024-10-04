@@ -694,6 +694,8 @@ protected:
     std::vector<libMesh::DenseMatrix<double>> d_weights;
     std::vector<libMesh::DenseMatrix<double>> d_elem_normals;
 
+    bool d_use_second_velocity_correction = false; //for 2 cut problem
+
     /*
      * Functions used to compute the initial coordinates of the Lagrangian mesh.
      */
