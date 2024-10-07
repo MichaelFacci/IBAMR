@@ -1658,6 +1658,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         // Loop over indices to calculate the interp coefficients (Lower=0, Upper=1)
 
                         for (int d = 0; d < NDIM; ++d) norm_vec(d) = n_qp[s * NDIM + d];//normal at the qp
+                        std::cout <<norm_vec(0)<< "is the x-dir norm vec, and "<<norm_vec(1)<< "is the y-dir norm vec\n";
 
                         Box<NDIM> stencil_box(ic_lower, ic_upper);
                         std::array<std::vector<double>, NDIM> DU_jump_second_cut;
@@ -1936,7 +1937,17 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
                                 for (int j = 0; j < NDIM; ++j)//new from Qi
                                 {
-                                    du_jump(j) = DU_jump_qp[d][s * NDIM + j];
+                                    if(axis == 0){
+                                        du_jump(0) = 0;
+                                        du_jump(1) = 2/2.5;
+                                    }
+                                    else{
+                                        du_jump(0) == 0;
+                                        du_jump(1) == 0;
+                                    }
+
+                                    //du_jump(j) = DU_jump_qp[d][s * NDIM + j];
+                                    std::cout<<"The jump condition at cut one is: " <<du_jump(j)<<" at part index: "<<part<<" when index j is: "<<j<<"\n";
                                     wrc(j) = wr[j][ic_upper[j] - ic[j]];
 
                                     if(d_use_second_velocity_correction){

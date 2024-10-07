@@ -18,7 +18,7 @@ elem_order = "FIRST"
 //parallel plate params
 LEFT_END          = -L/2   //left endpoint of parallel plate
 RIGHT_END         = L/2   //right endpoint of parallel plate
-SEPARATION        = DX*3.5 //2.0    //distance between plates
+SEPARATION        = DX*4 //2.0    //distance between plates
 UPPER_DRIFT_VELOCITY    = 1.0    //velocity of upper plate
 LOWER_DRIFT_VELOCITY    = -1.0   //velocity of upper plate
 PK1_DEV_QUAD_ORDER = "SEVENTH"

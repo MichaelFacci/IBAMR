@@ -1,3 +1,10 @@
+*.samrai
+*.ex2
+*:Zone.Identifier
+*/viz_II_2D_N_128_pbc_normjump
+*/hier_data_II2d_N_128_pbc_normjump
+*/CMakeFiles
+
 ### Generated autotools
 
 ibtk/contrib/autotools/bin
