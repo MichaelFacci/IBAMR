@@ -1,5 +1,5 @@
 // physical parameters
-Re = 50.0
+Re = 1.0
 MU  = 1/Re //0.5/Re
 RHO = 1.0
 L   = 5.0
@@ -18,7 +18,7 @@ elem_order = "FIRST"
 //parallel plate params
 LEFT_END          = -L/2   //left endpoint of parallel plate
 RIGHT_END         = L/2   //right endpoint of parallel plate
-SEPARATION        = DX*4 //2.0    //distance between plates
+SEPARATION        = DX/10 //2.0    //distance between plates
 UPPER_DRIFT_VELOCITY    = 1.0    //velocity of upper plate
 LOWER_DRIFT_VELOCITY    = -1.0   //velocity of upper plate
 PK1_DEV_QUAD_ORDER = "SEVENTH"
@@ -65,7 +65,7 @@ ENABLE_LOGGING             = TRUE
 KAPPA_S = 0.0002/DT^2  //0.0005/DT^2 //10000 //0.00001*DX/DT^2 //2.5*DX/DT^2
 ETA_S = 0.1
 
-USE_SECOND_VELOCITY_CORRECTION = FALSE
+USE_SECOND_VELOCITY_CORRECTION = TRUE
 USE_CURR_MESH_CONFIG = FALSE
 
 U_INFLOW = "sqrt((X1)*(X1))  <= SEPARATION/2 ? LOWER_DRIFT_VELOCITY + (X1 + SEPARATION/2)*(UPPER_DRIFT_VELOCITY - LOWER_DRIFT_VELOCITY)/SEPARATION : ( (X1 < -SEPARATION/2) ? LOWER_DRIFT_VELOCITY : UPPER_DRIFT_VELOCITY )"

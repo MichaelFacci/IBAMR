@@ -11,8 +11,8 @@ INSStaggeredHierarchyIntegrator::regridProjection(): regrid projection solve num
 INSStaggeredHierarchyIntegrator::regridProjection(): regrid projection solve residual norm        = 0
 Input database:
 input_db {
-   Re                             = 50                      // input used
-   MU                             = 0.02                    // input used
+   Re                             = 1                       // input used
+   MU                             = 1                       // input used
    RHO                            = 1                       // input used
    L                              = 5                       // input used
    U_MAX                          = 1                       // input not used
@@ -27,7 +27,7 @@ input_db {
    elem_order                     = "FIRST"                 // input not used
    LEFT_END                       = -2.5                    // input used
    RIGHT_END                      = 2.5                     // input used
-   SEPARATION                     = 2.5                     // input used
+   SEPARATION                     = 0.0625                  // input used
    UPPER_DRIFT_VELOCITY           = 1                       // input used
    LOWER_DRIFT_VELOCITY           = -1                      // input used
    PK1_DEV_QUAD_ORDER             = "SEVENTH"               // input not used
@@ -65,12 +65,12 @@ input_db {
    ENABLE_LOGGING                 = TRUE                    // input used
    KAPPA_S                        = 5.12                    // input used
    ETA_S                          = 0.1                     // input used
-   USE_SECOND_VELOCITY_CORRECTION = FALSE                   // input used
+   USE_SECOND_VELOCITY_CORRECTION = TRUE                    // input used
    USE_CURR_MESH_CONFIG           = FALSE                   // input used
    U_INFLOW                       = "sqrt((X1)*(X1))  <= SEPARATION/2 ? LOWER_DRIFT_VELOCITY + (X1 + SEPARATION/2)*(UPPER_DRIFT_VELOCITY - LOWER_DRIFT_VELOCITY)/SEPARATION : ( (X1 < -SEPARATION/2) ? LOWER_DRIFT_VELOCITY : UPPER_DRIFT_VELOCITY )" // input used
    VelocityBcCoefs_0 {
       U_INFLOW             = "sqrt((X1)*(X1))  <= SEPARATION/2 ? LOWER_DRIFT_VELOCITY + (X1 + SEPARATION/2)*(UPPER_DRIFT_VELOCITY - LOWER_DRIFT_VELOCITY)/SEPARATION : ( (X1 < -SEPARATION/2) ? LOWER_DRIFT_VELOCITY : UPPER_DRIFT_VELOCITY )" // input used
-      SEPARATION           = 2.5                            // input used
+      SEPARATION           = 0.0625                         // input used
       LOWER_DRIFT_VELOCITY = -1                             // input used
       UPPER_DRIFT_VELOCITY = 1                              // input used
       acoef_function_0     = "1.0"                          // input used
@@ -102,7 +102,7 @@ input_db {
    }
    VelocityInitialConditions {
       U_INFLOW             = "sqrt((X1)*(X1))  <= SEPARATION/2 ? LOWER_DRIFT_VELOCITY + (X1 + SEPARATION/2)*(UPPER_DRIFT_VELOCITY - LOWER_DRIFT_VELOCITY)/SEPARATION : ( (X1 < -SEPARATION/2) ? LOWER_DRIFT_VELOCITY : UPPER_DRIFT_VELOCITY )" // input used
-      SEPARATION           = 2.5                            // input used
+      SEPARATION           = 0.0625                         // input used
       LOWER_DRIFT_VELOCITY = -1                             // input used
       UPPER_DRIFT_VELOCITY = 1                              // input used
       function_0           = "sqrt((X1)*(X1))  <= SEPARATION/2 ? LOWER_DRIFT_VELOCITY + (X1 + SEPARATION/2)*(UPPER_DRIFT_VELOCITY - LOWER_DRIFT_VELOCITY)/SEPARATION : ( (X1 < -SEPARATION/2) ? LOWER_DRIFT_VELOCITY : UPPER_DRIFT_VELOCITY )" // input used
@@ -130,10 +130,10 @@ input_db {
       min_ghost_cell_width           = 6                    // input used
       normalize_pressure_jump        = FALSE                // input not used
       use_current_mesh_configuration = FALSE                // input used
-      use_second_velocity_correction = FALSE                // input used
+      use_second_velocity_correction = TRUE                 // input used
    }
    INSStaggeredHierarchyIntegrator {
-      mu                            = 0.02                  // input used
+      mu                            = 1                     // input used
       rho                           = 1                     // input used
       start_time                    = 0                     // input used
       end_time                      = 0.00625               // input used
@@ -242,15 +242,15 @@ IBHierarchyIntegrator::advanceHierarchy(): integrating hierarchy
 IBHierarchyIntegrator::integrateHierarchy(): computing Lagrangian force
 IBHierarchyIntegrator::integrateHierarchy(): spreading Lagrangian force to the Eulerian grid
 IBHierarchyIntegrator::integrateHierarchy(): solving the incompressible Navier-Stokes equations
-INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve number of iterations = 2
-INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve residual norm        = 3.84218e-06
-INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve number of iterations = 0
-INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve residual norm        = 0.000418295
+INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve number of iterations = 3
+INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve residual norm        = 0.000460604
+INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve number of iterations = 1
+INSStaggeredHierarchyIntegrator::integrateHierarchy(): stokes solve residual norm        = 0.00147633
 IBHierarchyIntegrator::integrateHierarchy(): interpolating Eulerian velocity to the Lagrangian mesh
 IBHierarchyIntegrator::integrateHierarchy(): performing Lagrangian midpoint-rule step
 IBHierarchyIntegrator::postprocessIntegrateHierarchy(): interpolating Eulerian velocity to the Lagrangian mesh
-IBHierarchyIntegrator::postprocessIntegrateHierarchy(): CFL number = 0.0100032
-IBHierarchyIntegrator::postprocessIntegrateHierarchy(): Eulerian estimate of upper bound on IB point displacement since last regrid = 0.0100032
+IBHierarchyIntegrator::postprocessIntegrateHierarchy(): CFL number = 0.0100232
+IBHierarchyIntegrator::postprocessIntegrateHierarchy(): Eulerian estimate of upper bound on IB point displacement since last regrid = 0.0100232
 IBHierarchyIntegrator::advanceHierarchy(): synchronizing updated data
 IBHierarchyIntegrator::advanceHierarchy(): resetting time dependent data
 
@@ -265,13 +265,13 @@ Writing visualization files...
 
  Lagrangian WSS_max_norm = 0
 
- Lagrangian U_L2_norm = 15.9325
+ Lagrangian U_L2_norm = 2.2306
 
- Lagrangian U_max_norm = 7.12534
+ Lagrangian U_max_norm = 0.999277
 
- Lagrangian disp_L2_norm = 0.0995766
+ Lagrangian disp_L2_norm = 0.0139583
 
- Lagrangian disp_max_norm = 0.0445324
+ Lagrangian disp_max_norm = 0.00624774
 
 Lagrangian P_L2_norm = 0
 
@@ -281,13 +281,13 @@ Lagrangian P_max_norm = 0
 
  Lagrangian WSS_max_norm = 0
 
- Lagrangian U_L2_norm = 15.9325
+ Lagrangian U_L2_norm = 2.23061
 
- Lagrangian U_max_norm = 7.12534
+ Lagrangian U_max_norm = 0.99928
 
- Lagrangian disp_L2_norm = 0.0995766
+ Lagrangian disp_L2_norm = 0.0139583
 
- Lagrangian disp_max_norm = 0.0445324
+ Lagrangian disp_max_norm = 0.00624775
 
 Lagrangian P_L2_norm = 0
 
@@ -303,15 +303,15 @@ Computing error norms.
  p_Eulerian_L2_norm = nan
  p_Eulerian_max_norm = 0
 
- u_Eulerian_L2_norm = 4.05096
+ u_Eulerian_L2_norm = 4.97335
 
- u_Eulerian_max_norm = 1.00032
+ u_Eulerian_max_norm = 1.00232
 
 Error in the Eulerian u at time 0.006250000000000001:
-  L2-norm:  0.001140777296777013
-  max-norm: 0.0003473904487998336
+  L2-norm:  0.06925220973314181
+  max-norm: 0.03068682680719914
 +++++++++++++++++++++++++++++++++++++++++++++++++++
- MU = 0.02
+ MU = 1
   dx:  0.625
   dt: 0.006250000000000001
  Using the jump condition

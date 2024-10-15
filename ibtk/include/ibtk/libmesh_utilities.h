@@ -1211,7 +1211,7 @@ intersect_line_with_edge_non_coordinate(std::vector<std::pair<double, libMesh::P
         {
             double det2=a11*b2-a21*b1;
             const double t = det2 / det;
-            is_interior_intersection = (u >= -1.0 && u <= 1.0);
+            is_interior_intersection = ((u >= -1.0 && u <= 1.0) && (t >=0 && t <= 1));
             t_vals.push_back(std::make_pair(t, libMesh::Point(u, 0.0, 0.0)));
         }
         break;
