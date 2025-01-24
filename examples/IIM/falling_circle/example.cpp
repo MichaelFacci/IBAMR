@@ -11,9 +11,11 @@
 //
 // ---------------------------------------------------------------------
 
+#include <ibamr/FEMechanicsExplicitIntegrator.h>
 #include <ibamr/IBExplicitHierarchyIntegrator.h>
 #include <ibamr/IBStandardForceGen.h>
 #include <ibamr/IBStandardInitializer.h>
+#include <ibamr/IBStrategySet.h>
 #include <ibamr/IIMethod.h>
 #include <ibamr/INSCollocatedHierarchyIntegrator.h>
 #include <ibamr/INSStaggeredHierarchyIntegrator.h>
@@ -30,12 +32,38 @@
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/boundary_mesh.h>
+#include <libmesh/edge_edge2.h>
+#include <libmesh/dense_matrix.h>
+#include <libmesh/dense_submatrix.h>
+#include <libmesh/dense_subvector.h>
+#include <libmesh/dense_vector.h>
+#include <libmesh/dirichlet_boundaries.h>
+#include <libmesh/dof_map.h>
+#include <libmesh/elem.h>
+#include <libmesh/enum_solver_package.h>
 #include <libmesh/equation_systems.h>
 #include <libmesh/exodusII_io.h>
 #include <libmesh/explicit_system.h>
+#include <libmesh/fe.h>
+#include <libmesh/getpot.h>
+#include <libmesh/gmsh_io.h>
+#include <libmesh/gnuplot_io.h>
+#include <libmesh/libmesh.h>
+#include <libmesh/libmesh_config.h>
+#include <libmesh/linear_implicit_system.h>
 #include <libmesh/mesh.h>
+#include <libmesh/mesh_function.h>
 #include <libmesh/mesh_generation.h>
 #include <libmesh/mesh_triangle_interface.h>
+#include <libmesh/numeric_vector.h>
+#include <libmesh/perf_log.h>
+#include <libmesh/petsc_linear_solver.h>
+#include <libmesh/petsc_macro.h>
+#include <libmesh/quadrature_gauss.h>
+#include <libmesh/solver_configuration.h>
+#include <libmesh/sparse_matrix.h>
+#include <libmesh/string_to_enum.h>
+#include <libmesh/zero_function.h>
 
 #include <boost/multi_array.hpp>
 
@@ -49,14 +77,63 @@
 // Elasticity model data.
 namespace ModelData
 {
+static BoundaryInfo* lag_bdry_info;
 static double kappa_s = 1.0e6;
 static double eta_s = 0.0;
+static double kappa_plate = 0.0;
 static double grav_const[3] = { 0.0, -981, 0.0 };
 static const double TOL = sqrt(std::numeric_limits<double>::epsilon());
 static VectorValue<double> COM;
+static bool use_volumetric_term;
+static std::string stress_function;
 
 System *x_new_solid_system, *u_new_solid_system;
 System *x_half_solid_system, *u_half_solid_system;
+
+System* x_new_surface_system;
+System* Tau_new_surface_system;
+
+EquationSystems* boundary_systems;
+
+void
+solid_surface_force_function(VectorValue<double>& F,
+                             const VectorValue<double>& /*n*/,
+                             const VectorValue<double>& /*N*/,
+                             const TensorValue<double>& /*FF*/,
+                             const libMesh::Point& /*x*/,
+                             const libMesh::Point& X,
+                             Elem* const /*elem*/,
+                             const unsigned short int /*side*/,
+                             const vector<const vector<double>*>& /*var_data*/,
+                             const vector<const vector<VectorValue<double> >*>& /*grad_var_data*/,
+                             double /*time*/,
+                             void* /*ctx*/)
+{
+    MeshBase& mesh_bndry = boundary_systems->get_mesh();
+    std::vector<double> x_surface(NDIM, 0.0);
+    for (unsigned int d = 0; d < NDIM; ++d)
+    {
+        const MeshBase::const_element_iterator el_begin = mesh_bndry.active_local_elements_begin();
+        const MeshBase::const_element_iterator el_end = mesh_bndry.active_local_elements_end();
+        for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+        {
+            Elem* const elem_bndry = *el_it;
+            if (elem_bndry->contains_point(X))
+                F(d) = Tau_new_surface_system->point_value(d, X, elem_bndry); //&side_elem);
+        }
+    }
+
+    return;
+}
+// Stress tensor functions.
+static double c1_s = 0.05;
+static double p0_s = 0.0;
+static double beta_s = 0.0;
+static double shear_mod = 0.0;
+static double pr = 0.0;
+static double bulk_mod = 0.0;
+static bool use_elastic_bdry = false;
+
 void
 tether_force_function(VectorValue<double>& F,
                       const VectorValue<double>& /*n*/,
@@ -95,6 +172,31 @@ tether_force_function(VectorValue<double>& F,
     }
     return;
 } // tether_force_function
+
+
+void
+tether_force_function_lower(VectorValue<double>& F,
+                      const VectorValue<double>& n,
+                      const VectorValue<double>& /*N*/,
+                      const TensorValue<double>& /*FF*/,
+                      const libMesh::Point& x,
+                      const libMesh::Point& X,
+                      Elem* const /*elem*/,
+                      const unsigned short /*side*/,
+                      const vector<const vector<double>*>& var_data,
+                      const vector<const vector<VectorValue<double> >*>& /*grad_var_data*/,
+                      double time,
+                      void* /*ctx*/)
+                      {
+                        const std::vector<double>& u = *var_data[0];   
+                        for (unsigned int d = 0; d < NDIM; ++d)
+	                    {
+                            F(d) = kappa_plate * (X(d) - x(d)) - eta_s * u[d];
+                        }
+                        return;
+                      }
+
+
 } // namespace ModelData
 using namespace ModelData;
 
@@ -303,6 +405,67 @@ calculateFluidForceAndTorque(VectorValue<double>& F, // net force  acting on the
 
 } // calculateFluidForceAndTorque
 
+
+void
+PK1_dev_stress_function_disk(TensorValue<double>& PP,
+                             const TensorValue<double>& FF,
+                             const libMesh::Point& /*X*/,
+                             const libMesh::Point& /*s*/,
+                             Elem* const /*elem*/,
+                             const vector<const vector<double>*>& /*var_data*/,
+                             const vector<const vector<VectorValue<double> >*>& /*grad_var_data*/,
+                             double /*time*/,
+                             void* /*ctx*/)
+{
+    static const TensorValue<double> II(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+    static const TensorValue<double> IO(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    const TensorValue<double> CC = FF.transpose() * FF;
+    const double J = FF.det();
+    const double I1 = (FF.transpose() * FF).tr();
+    const TensorValue<double> FF_inv_trans = tensor_inverse_transpose(FF, NDIM);
+    PP = shear_mod * pow(J, -2.0 / 3.0) * (FF - (I1 / 3.0) * FF_inv_trans);
+    return;
+} // PK1_dev_stress_function
+
+void
+PK1_dil_stress_function_disk(TensorValue<double>& PP,
+                             const TensorValue<double>& FF,
+                             const libMesh::Point& /*X*/,
+                             const libMesh::Point& /*s*/,
+                             Elem* const /*elem*/,
+                             const vector<const vector<double>*>& /*var_data*/,
+                             const vector<const vector<VectorValue<double> >*>& /*grad_var_data*/,
+                             double /*time*/,
+                             void* /*ctx*/)
+{
+    const TensorValue<double> FF_inv_trans = tensor_inverse_transpose(FF, NDIM);
+    const double J = FF.det();
+    PP = bulk_mod * J * log(J) * FF_inv_trans;
+    return;
+} // PK1_dil_stress_function_disk
+
+Real
+initial_jacobian(const libMesh::Point& /*p*/,
+                 const Parameters& /*parameters*/,
+                 const string& /*system*/,
+                 const string& var_name)
+{
+    // could include something more complicated
+    if (var_name == "Avg J")
+        return 1.0;
+    else
+        return 0.0;
+}
+
+void
+apply_initial_jacobian(EquationSystems& es, const string& system_name)
+{
+    libmesh_assert_equal_to(system_name, "JacobianDeterminant");
+    ExplicitSystem& system = es.get_system<ExplicitSystem>("JacobianDeterminant");
+    es.parameters.set<Real>("time") = system.time = 0;
+    system.project_solution(initial_jacobian, NULL, es.parameters);
+}
+
 void
 calculateGravitationalForce(const double* params, VectorValue<double>& F_g, EquationSystems* solid_equation_systems)
 {
@@ -356,17 +519,21 @@ calculateGravitationalForce(const double* params, VectorValue<double>& F_g, Equa
 void
 getSkewSymmetricAngVelTensor(TensorValue<double>& Omega, VectorValue<double> W)
 {
-    TBOX_ASSERT(NDIM == 3); // The code is currently setup only for 3D cases //
+    //TBOX_ASSERT(NDIM == 3); // The code is currently setup only for 3D cases //
 
     Omega.zero();
 
+    Omega(0, 1) = -W(0);
+    Omega(1, 0) =  W(0);
+
+    /*
     Omega(0, 1) = -W(2);
     Omega(0, 2) = W(1);
     Omega(1, 0) = W(2);
     Omega(1, 2) = -W(0);
     Omega(2, 0) = -W(1);
     Omega(2, 1) = W(0);
-
+    */
     return;
 }
 
@@ -418,7 +585,7 @@ Solve6DOFSystemofEquations(const double* params,
         ++iter;
     }
 
-    pout << " Number of 6DOF iterations = " << iter << "\n\n";
+    pout << " Number of 3DOF iterations = " << iter << "\n\n";
 
     return;
 } // Solve6DOFSystemofEquations
@@ -484,12 +651,16 @@ updateVelocityAndPositionOfSolidPoints(const double* params,
                 const int u_dof_index = n->dof_number(U_sys_num, d, 0);
                 const int x_dof_index = n->dof_number(X_sys_num, d, 0);
                 X_coords.set(x_dof_index, SS(d));
+
+                //std::cout<<"SS is: " <<SS << "\n";
                 U_coords.set(u_dof_index, V(d) + WxR(d));
 
                 X_half_coords.set(x_dof_index, 0.5 * (SS(d) + X_new(d)));
             }
         }
     }
+    //x_new_solid_system = solid_equation_systems.get_system("position_current");
+
     X_coords.close();
     X_system.get_dof_map().enforce_constraints_exactly(X_system, &X_coords);
     X_system.solution->localize(*X_system.current_local_solution);
@@ -527,6 +698,8 @@ main(int argc, char* argv[])
         const double dx = input_db->getDouble("DX");
         kappa_s = input_db->getDouble("KAPPA_S");
         eta_s = input_db->getDouble("ETA_S");
+        kappa_plate = input_db->getDouble("KAPPA_PLATE");
+        use_elastic_bdry = input_db->getBool("USE_ELASTIC_BDRY");
         // Get various standard options set in the input file.
         const bool dump_viz_data = app_initializer->dumpVizData();
         const int viz_dump_interval = app_initializer->getVizDumpInterval();
@@ -536,6 +709,7 @@ main(int argc, char* argv[])
                                              std::to_string(double(rho_s)) + "_kappa_" +
                                              std::to_string(double(kappa_s)) + ".ex2";
         const string exodus_bndry_filename = app_initializer->getExodusIIFilename();
+        const string lower_exodus_filename = app_initializer->getExodusIIFilename("lower_plate");
 
         const bool dump_restart_data = app_initializer->dumpRestartData();
         const int restart_dump_interval = app_initializer->getRestartDumpInterval();
@@ -554,15 +728,25 @@ main(int argc, char* argv[])
 
         // Create a simple FE mesh.
         Mesh solid_mesh(init.comm(), NDIM);
+        Mesh mesh_lower(init.comm(), NDIM);
+
         const double ds = input_db->getDouble("MFAC") * dx;
         string elem_type = input_db->getString("ELEM_TYPE");
         const double rho_f = input_db->getDouble("RHO");
-
+        const double left_end = input_db->getDouble("LEFT_END");
+        const double right_end = input_db->getDouble("RIGHT_END");
+        const double bottom_plane_height = input_db->getDouble("BOTTOM_PLANE_HEIGHT");
+        const double length_plate = right_end - left_end;
+        const string mesh_name = input_db->getString("MESH_NAME");
+        const unsigned int n_elem_gen = static_cast<int>(length_plate/ds);
+        double MAX_LEVELS = input_db->getDouble("MAX_LEVELS");
         input_db->getDoubleArray("R_COM", &COM(0), LIBMESH_DIM);
         double params[2] = { rho_s, rho_f };
 
         //~ const double grav_const =input_db->getDouble("RHO");
 
+
+        
         const double R = input_db->getDouble("R");
         if (NDIM == 2 && (elem_type == "TRI3" || elem_type == "TRI6"))
         {
@@ -619,13 +803,52 @@ main(int argc, char* argv[])
             X(1) += COM(1);
             X(2) += COM(2);
         }
-
+    /*
+        libMesh::GmshIO gmsh_io(solid_mesh);
+        
+        gmsh_io.read(mesh_name);//only do this if we dont want to use the generic plate
+        */
         solid_mesh.prepare_for_use();
 
         BoundaryMesh bndry_mesh(solid_mesh.comm(), solid_mesh.mesh_dimension() - 1);
         solid_mesh.boundary_info->sync(bndry_mesh);
         bndry_mesh.prepare_for_use();
+        
+        c1_s = input_db->getDouble("C1_S");
+        pr = input_db->getDouble("POISSON_RATIO");
+        shear_mod = input_db->getDouble("SHEAR_MOD");
+        bulk_mod = input_db->getDouble("BULK_MOD");
+        p0_s = input_db->getDouble("P0_S");
+        beta_s = input_db->getDouble("BETA_S");
+        lag_bdry_info = &solid_mesh.get_boundary_info();
 
+        // Setup the model parameters.
+
+        use_volumetric_term = input_db->getBool("USE_VOLUMETRIC_TERM");
+        stress_function = input_db->getString("STRESS_FUNCTION");
+
+        //create bottom plate
+        int node_id = 0;
+        mesh_lower.get_boundary_info().clear_boundary_node_ids();
+        for (unsigned int i = 0; i <= n_elem_gen; i++){
+            mesh_lower.add_point(libMesh::Point(right_end - ds * i, bottom_plane_height),node_id++); //generate opposite direction so that n is opposite of upper plate
+        }
+
+        //add Elems using adjacent nodes
+        for (unsigned int i = 0; i < n_elem_gen; i++){
+            Elem* elem = mesh_lower.add_elem(new Edge2);
+            elem->set_node(0) = mesh_lower.node_ptr(i);
+            elem->set_node(1) = mesh_lower.node_ptr(i+1);
+        }
+        mesh_lower.prepare_for_use();
+
+        const int LOWER_MESH_ID = 1;
+        const int CIRCLE_MESH_ID = 0;
+        
+        vector<MeshBase*> meshes(2);
+        meshes[LOWER_MESH_ID] = &mesh_lower;
+        meshes[CIRCLE_MESH_ID] = &bndry_mesh;
+        
         // Create major algorithm and data objects that comprise the
         // application.  These objects are configured from the input database
         // and, if this is a restarted run, from the restart database.
@@ -648,15 +871,25 @@ main(int argc, char* argv[])
             TBOX_ERROR("Unsupported solver type: " << solver_type << "\n"
                                                    << "Valid options are: COLLOCATED, STAGGERED");
         }
-        Pointer<IIMethod> ib_method_ops =
+        
+        Pointer<FEMechanicsExplicitIntegrator> fem_solver = new FEMechanicsExplicitIntegrator(
+            "FEMechanicsExplicitIntegrator",
+            app_initializer->getComponentDatabase("FEMechanicsExplicitIntegrator"),
+            &solid_mesh,
+            app_initializer->getComponentDatabase("GriddingAlgorithm")->getInteger("max_levels"));
+        Pointer<IIMethod> ibfe_bndry_ops =
             new IIMethod("IIMethod",
                          app_initializer->getComponentDatabase("IIMethod"),
-                         &bndry_mesh,
+                         meshes,
                          app_initializer->getComponentDatabase("GriddingAlgorithm")->getInteger("max_levels"));
+        vector<Pointer<IBStrategy> > ib_method_ops(2);
+        ib_method_ops[0] = fem_solver;
+        ib_method_ops[1] = ibfe_bndry_ops;
+        Pointer<IBStrategySet> ib_method_set = new IBStrategySet(ib_method_ops.begin(), ib_method_ops.end());
         Pointer<IBHierarchyIntegrator> time_integrator =
             new IBExplicitHierarchyIntegrator("IBHierarchyIntegrator",
                                               app_initializer->getComponentDatabase("IBHierarchyIntegrator"),
-                                              ib_method_ops,
+                                              ibfe_bndry_ops,
                                               navier_stokes_integrator);
         Pointer<CartesianGridGeometry<NDIM> > grid_geometry = new CartesianGridGeometry<NDIM>(
             "CartesianGeometry", app_initializer->getComponentDatabase("CartesianGeometry"));
@@ -676,18 +909,51 @@ main(int argc, char* argv[])
                                         load_balancer);
 
         // Configure the IBFE solver.
-        ib_method_ops->initializeFEEquationSystems();
+        //ib_method_ops->initializeFEEquationSystems();
+        VectorValue<double> x_com;
+        x_com.zero();
+        double vol = 0.0;
         std::vector<int> vars(NDIM);
         for (unsigned int d = 0; d < NDIM; ++d) vars[d] = d;
+        vector<SystemData> velocity_data(1);
+        velocity_data[0] = SystemData(FEMechanicsBase::VELOCITY_SYSTEM_NAME, vars);
+
+        ibfe_bndry_ops->initializeFEEquationSystems();
+
+
 
         vector<SystemData> sys_data(1, SystemData(IIMethod::VELOCITY_SYSTEM_NAME, vars));
+        // Configure the FE solver.
+        FEMechanicsBase::LagSurfaceForceFcnData solid_surface_force_data(solid_surface_force_function, velocity_data);
+        fem_solver->registerLagSurfaceForceFunction(solid_surface_force_data);
+
+        FEMechanicsBase::PK1StressFcnData PK1_dev_stress_data(PK1_dev_stress_function_disk, velocity_data);
+        PK1_dev_stress_data.quad_order =
+            Utility::string_to_enum<libMesh::Order>(input_db->getStringWithDefault("PK1_DEV_QUAD_ORDER", "THIRD"));
+        fem_solver->registerPK1StressFunction(PK1_dev_stress_data);
         //~ IBFEMethod::LagForceFcnData body_fcn_data(tether_force_function, sys_data);
         //~ ib_method_ops->registerLagForceFunction(body_fcn_data);
 
+        IIMethod::LagSurfaceForceFcnData tether_force_lower_data(tether_force_function_lower, sys_data);
         IIMethod::LagSurfaceForceFcnData surface_fcn_data(tether_force_function, sys_data);
-        ib_method_ops->registerLagSurfaceForceFunction(surface_fcn_data);
-        EquationSystems* bndry_equation_systems = ib_method_ops->getFEDataManager()->getEquationSystems();
 
+        ibfe_bndry_ops->registerLagSurfaceForceFunction(surface_fcn_data,0);
+        ibfe_bndry_ops->registerLagSurfaceForceFunction(tether_force_lower_data,1);
+        
+
+
+        EquationSystems* bndry_equation_systems = ibfe_bndry_ops->getFEDataManager(0)->getEquationSystems();
+        EquationSystems* lower_equation_systems = ibfe_bndry_ops->getFEDataManager(1)->getEquationSystems();
+
+        FEMechanicsBase::PK1StressFcnData PK1_dil_stress_data(PK1_dil_stress_function_disk);
+        PK1_dil_stress_data.quad_order =
+            Utility::string_to_enum<libMesh::Order>(input_db->getStringWithDefault("PK1_DIL_QUAD_ORDER", "FIRST"));
+        fem_solver->registerPK1StressFunction(PK1_dil_stress_data);
+
+        fem_solver->initializeFEEquationSystems();
+        EquationSystems* equation_systems = fem_solver->getEquationSystems();
+        ExplicitSystem& jac_system = equation_systems->add_system<ExplicitSystem>("JacobianDeterminant");
+        jac_system.attach_init_function(apply_initial_jacobian);
         // Setup solid systems.
         libMesh::EquationSystems* solid_equation_systems(new EquationSystems(solid_mesh));
         x_new_solid_system = &solid_equation_systems->add_system<ExplicitSystem>("position_new");
@@ -837,13 +1103,16 @@ main(int argc, char* argv[])
         }
         libMesh::UniquePtr<ExodusII_IO> exodus_solid_io(uses_exodus ? new ExodusII_IO(solid_mesh) : NULL);
         libMesh::UniquePtr<ExodusII_IO> exodus_bndry_io(uses_exodus ? new ExodusII_IO(bndry_mesh) : NULL);
+        libMesh::UniquePtr<ExodusII_IO> exodus_lower_io(uses_exodus ? new ExodusII_IO(mesh_lower) : NULL);
+
 
         // Initialize hierarchy configuration and data on all patches.
-        ib_method_ops->initializeFEData();
+        ibfe_bndry_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
 
         // Deallocate initialization objects.
         app_initializer.setNull();
+        fem_solver->initializeFEData();
 
         // Print the input database contents to the log file.
         plog << "Input database:\n";
@@ -856,7 +1125,7 @@ main(int argc, char* argv[])
         TensorValue<double> I_w_0, I_w;
 
         VectorValue<double> V, W, F_b, F_s, Torque, W_hat, V_hat;
-        VectorValue<double> x_com, x_com_hat;
+        VectorValue<double> x_com_hat;
         double M;
 
         TensorValue<double> Q(std::cos(TOL), -std::sin(TOL), 0.0, std::sin(TOL), std::cos(TOL), 0.0, 0.0, 0.0, 1.0);
@@ -891,6 +1160,8 @@ main(int argc, char* argv[])
                     exodus_solid_filename, *solid_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
                 exodus_bndry_io->write_timestep(
                     exodus_bndry_filename, *bndry_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+                exodus_lower_io->write_timestep(
+                    lower_exodus_filename, *lower_equation_systems, iteration_num /viz_dump_interval + 1, loop_time);
             }
         }
 
@@ -912,7 +1183,7 @@ main(int argc, char* argv[])
             v_new_stream.precision(10);
             w_new_stream.precision(10);
         }
-
+        const double n_cycles = input_db->getDouble("NCYCLE");
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
         double dt = 0.0;
@@ -926,8 +1197,38 @@ main(int argc, char* argv[])
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "At beginning of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
-            dt = time_integrator->getMaximumTimeStepSize();
 
+            boundary_systems = bndry_equation_systems;
+            if(use_elastic_bdry){
+                System& X_system = equation_systems->get_system<System>(FEMechanicsBase::COORDS_SYSTEM_NAME);
+                x_new_solid_system = &X_system;
+                u_new_solid_system = &equation_systems->get_system<System>(FEMechanicsBase::VELOCITY_SYSTEM_NAME);
+                Tau_new_surface_system = &bndry_equation_systems->get_system<System>(IIMethod::TAU_OUT_SYSTEM_NAME);
+                x_new_surface_system = &bndry_equation_systems->get_system<System>(IIMethod::COORDS_SYSTEM_NAME);
+            }
+
+            dt = time_integrator->getMaximumTimeStepSize();
+            
+            if(use_elastic_bdry){
+            
+                //***************************Elasticity FE Updates***********/
+                
+                for (int ii = 0; ii < static_cast<int>(n_cycles); ii++)
+                {
+                    fem_solver->preprocessIntegrateData(loop_time + 0.5 * static_cast<double>(ii) * dt / n_cycles,
+                                                        loop_time + 0.5 * static_cast<double>(ii + 1) * dt / n_cycles,
+                                                        /*num_cycles*/ 1);
+                    fem_solver->modifiedTrapezoidalStep(loop_time + 0.5 * static_cast<double>(ii) * dt / n_cycles,
+                                                        loop_time + 0.5 * static_cast<double>(ii + 1) * dt / n_cycles);
+                    fem_solver->postprocessIntegrateData(loop_time + 0.5 * static_cast<double>(ii) * dt / n_cycles,
+                                                        loop_time + 0.5 * static_cast<double>(ii + 1) * dt / n_cycles,
+                                                        /*num_cycles*/ 1);
+                }
+
+                x_new_solid_system = &equation_systems->get_system<System>(FEMechanicsBase::COORDS_SYSTEM_NAME);
+                u_new_solid_system = &equation_systems->get_system<System>(FEMechanicsBase::VELOCITY_SYSTEM_NAME);
+            }
+            
             //****************************** RBD code **************************************//
             calculateGravitationalForce(params, F_b, solid_equation_systems);
 
@@ -947,6 +1248,27 @@ main(int argc, char* argv[])
                                                    0.5 * dt);
 
             time_integrator->advanceHierarchy(dt);
+                        //***************************Elasticity FE Updates***********/
+            if(use_elastic_bdry){
+                boundary_systems = bndry_equation_systems;
+                Tau_new_surface_system = &bndry_equation_systems->get_system<System>(IIMethod::TAU_OUT_SYSTEM_NAME);
+                x_new_surface_system = &bndry_equation_systems->get_system<System>(IIMethod::COORDS_SYSTEM_NAME);
+
+                for (int ii = 0; ii < static_cast<int>(n_cycles); ii++)
+                {
+                    fem_solver->preprocessIntegrateData(loop_time + (0.5 + 0.5 * static_cast<double>(ii)) * dt / n_cycles,
+                                                        loop_time +
+                                                            (0.5 + 0.5 * static_cast<double>(ii + 1)) * dt / n_cycles,
+                                                        /*num_cycles*/ 1);
+                    fem_solver->modifiedTrapezoidalStep(loop_time + (0.5 + 0.5 * static_cast<double>(ii)) * dt / n_cycles,
+                                                        loop_time +
+                                                            (0.5 + 0.5 * static_cast<double>(ii + 1)) * dt / n_cycles);
+                    fem_solver->postprocessIntegrateData(loop_time + (0.5 + 0.5 * static_cast<double>(ii)) * dt / n_cycles,
+                                                        loop_time +
+                                                            (0.5 + 0.5 * static_cast<double>(ii + 1)) * dt / n_cycles,
+                                                        /*num_cycles*/ 1);
+                }
+            }
 
             calculateGravitationalForce(params, F_b, solid_equation_systems);
 
@@ -966,7 +1288,7 @@ main(int argc, char* argv[])
                                                    0.5 * dt);
 
             pout << "\n\n"
-                 << " Translationl Velocity = " << V << "\n";
+                 << " Translational Velocity = " << V << "\n";
 
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
@@ -996,6 +1318,10 @@ main(int argc, char* argv[])
                                                     loop_time);
                     exodus_bndry_io->write_timestep(exodus_bndry_filename,
                                                     *bndry_equation_systems,
+                                                    iteration_num / viz_dump_interval + 1,
+                                                    loop_time);
+                    exodus_lower_io->write_timestep(lower_exodus_filename,
+                                                    *lower_equation_systems,
                                                     iteration_num / viz_dump_interval + 1,
                                                     loop_time);
                 }

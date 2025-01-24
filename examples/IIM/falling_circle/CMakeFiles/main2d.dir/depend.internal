@@ -176,6 +176,7 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/LMarkerSetVariable.h
  /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/LSetVariable.h
  /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/LSiloDataWriter.h
+ /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/LibMeshSystemVectors.h
  /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/PatchMathOps.h
  /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/PoissonSolver.h
  /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/QuadratureCache.h
@@ -197,6 +198,8 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/ibamr/IBAMR/ibtk/include/ibtk/private/StreamableManager-inl.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/AdvDiffHierarchyIntegrator.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/ConvectiveOperator.h
+ /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/FEMechanicsBase.h
+ /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/FEMechanicsExplicitIntegrator.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IBExplicitHierarchyIntegrator.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IBHierarchyIntegrator.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IBLagrangianForceStrategy.h
@@ -206,6 +209,7 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IBStandardForceGen.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IBStandardInitializer.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IBStrategy.h
+ /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IBStrategySet.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/IIMethod.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/INSCollocatedHierarchyIntegrator.h
  /home/mfacci/sfw/ibamr/IBAMR/include/ibamr/INSHierarchyIntegrator.h
@@ -1097,6 +1101,8 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/bounding_box.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/chunked_mapvector.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/compare_types.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/const_function.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/coupling_matrix.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dense_matrix.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dense_matrix_base.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dense_submatrix.h
@@ -1104,10 +1110,12 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dense_vector.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dense_vector_base.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/diff_context.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dirichlet_boundaries.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/distributed_mesh.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dof_map.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/dof_object.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/edge.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/edge_edge2.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/elem.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/elem_range.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/enum_convergence_flags.h
@@ -1143,7 +1151,11 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/fem_function_base.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/float128_shims.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/frequency_system.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/function_base.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/getpot.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/ghosting_functor.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/gmsh_io.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/gnuplot_io.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/hashing.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/hashword.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/id_types.h
@@ -1163,6 +1175,7 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/mapvector.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/mesh.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/mesh_base.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/mesh_function.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/mesh_generation.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/mesh_input.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/mesh_output.h
@@ -1178,6 +1191,7 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/parallel_only.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/parameters.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/perf_log.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/petsc_linear_solver.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/petsc_macro.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/petsc_solver_exception.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/petsc_vector.h
@@ -1195,6 +1209,7 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/restore_warnings.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/simple_range.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/single_predicates.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/solver_configuration.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/sparse_matrix.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/sparsity_pattern.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/steady_system.h
@@ -1209,6 +1224,7 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/threads_pthread.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/threads_tbb.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/transient_system.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/tree_base.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/tuple_of.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/type_n_tensor.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/type_tensor.h
@@ -1217,6 +1233,8 @@ CMakeFiles/main2d.dir/example.cpp.o
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/variable.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/variant_filter_iterator.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/vector_value.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/wrapped_petsc.h
+ /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/libmesh/zero_function.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/metaphysicl/compare_types.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/metaphysicl/dualnumber_forward.h
  /home/mfacci/sfw/linux/libmesh/1.6.2/1.6.2-opt/include/metaphysicl/raw_type.h

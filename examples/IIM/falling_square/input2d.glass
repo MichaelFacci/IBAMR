@@ -1,21 +1,22 @@
 R  = 0.025
 MU = 8.87e-3       // the viscosity required to attain the specified Reynolds number
 RHO = 0.997
-RHO_S = 2.56
-R_COM = 0.0 , 0.0, 0.0
+RHO_S = 1.09
+R_COM = -0.07 , 0.0, 0.0
 // grid spacing parameters
 // grid spacing parameters
-MAX_LEVELS = 4                            // maximum number of levels in locally refined grid
+MAX_LEVELS = 3                            // maximum number of levels in locally refined grid
 REF_RATIO  = 4                            // refinement ratio between levels
-N = 16                                    // actual    number of grid cells on coarsest grid level
+N = 8                                    // actual    number of grid cells on coarsest grid level
 NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N  // effective number of grid cells on finest   grid level
-L = 96 * R                                   // length of computational domain
-H = 32 * R       							// width of the domain
+L = 16 * R                                   // length of computational domain
+H = 16 * R       							// width of the domain
+
 
 DX0 = H/N                                      // mesh width on coarsest grid level
 DX  = H/NFINEST                                // mesh width on finest   grid level
-MFAC = 1.8                                     // ratio of Lagrangian mesh width to Cartesian mesh width
-ELEM_TYPE = "HEX8"                            // type of element to use for structure discretization
+MFAC = 1.5                                     // ratio of Lagrangian mesh width to Cartesian mesh width
+ELEM_TYPE = "TRI3"                            // type of element to use for structure discretization
 USE_BOUNDARY_MESH = TRUE
 
 // solver parameters
@@ -31,9 +32,9 @@ USE_CONSISTENT_MASS_MATRIX = TRUE          // whether to use a consistent or lum
 IB_POINT_DENSITY           = 1.0               // approximate density of IB quadrature points for Lagrangian-Eulerian interaction
 SOLVER_TYPE                = "STAGGERED"       // the fluid solver to use (STAGGERED or COLLOCATED)
 CFL_MAX                    = 0.1               // maximum CFL number
-DT                         = 0.1*CFL_MAX*DX //5e-5    // maximum timestep size
+DT                         = 0.01*CFL_MAX*DX //5e-5    // maximum timestep size
 START_TIME                 = 0.0e0             // initial simulation time
-END_TIME                   = 2.0             // final simulation time
+END_TIME                   = 2           // final simulation time
 GROW_DT                    = 2.0e0             // growth factor for timesteps
 CONVECTIVE_TS_TYPE         = "ADAMS_BASHFORTH" // convective time stepping type
 CONVECTIVE_OP_TYPE         = "PPM"             // convective differencing discretization type
@@ -51,13 +52,49 @@ OUTPUT_DIV_U               = TRUE
 ENABLE_LOGGING             = TRUE
 
 // model parameters
-KAPPA_S = 0.0003/DT^2
-ETA_S = 0.0 
+KAPPA_S = 1.4e5//2.9152e05//0.0003/DT^2
+ETA_S = 1.0 
+KAPPA_PLATE = KAPPA_S
+
+//elasticity parameters
+USE_ELASTIC_BDRY = FALSE
+NCYCLE = 1
+SIM_NUM = 9
+NUM_CYCLES = 1
+
+PK1_DEV_QUAD_ORDER = "THIRD"
+PK1_DIL_QUAD_ORDER = "FIRST"
+//U_MAX = 2.0
+C1_S = 0.1
+P0_S = C1_S
+BETA_S = 1.0*(NFINEST/64.0)
+
+STRESS_FUNCTION = "MODIFIED"
+USE_VOLUMETRIC_TERM = TRUE
+YOUNGS_MOD     = 250
+TRACTION_FORCE = 6.25
+SHEAR_MOD      = 0.1 //YOUNGS_MOD / 2.0 / (.5 + 1.0)
+POISSON_RATIO  = 0.499
+BULK_MOD 	   = 2.0 * SHEAR_MOD * (1.0 + POISSON_RATIO) / (3.0 - 6.0 * POISSON_RATIO)
+SAFETY         = 0.5
 
 FY = "-981 * RHO"
 FX = "0.0"
 FZ = "0.0"
 
+// 2 cut parameters
+BOTTOM_PLANE_HEIGHT = -0.09
+USE_SECOND_VELOCITY_CORRECTION = TRUE
+USE_CURR_MESH_CONFIG = TRUE
+USE_PHONG_NORMALS = FALSE
+USE_DISCON_ELEMS = FALSE
+LEFT_END          = -H/2 + 0.15   //left endpoint of plate
+RIGHT_END         =  H/2 - 0.15  //right endpoint of plate
+EXTERIOR_CALC_COEF = 0
+MESH_NAME = "rectangle_2.msh"
+MESH_NAME_LOWER = "better_ellipse_mfac_2.msh"
+PI = 3.14159265358979323846264
+THETA_PLATE = PI/4
 
 // collocated solver parameters
 PROJECTION_METHOD_TYPE = "PRESSURE_UPDATE"
@@ -114,6 +151,7 @@ IBHierarchyIntegrator {
    start_time          = START_TIME
    end_time            = END_TIME
    grow_dt             = GROW_DT
+   num_cycles          = NUM_CYCLES
    regrid_cfl_interval = REGRID_CFL_INTERVAL
    dt_max              = DT
    error_on_dt_change  = ERROR_ON_DT_CHANGE
@@ -132,6 +170,10 @@ IIMethod {
    wss_calc_width = WSS_CALC_WIDTH
    p_calc_width = P_CALC_WIDTH
    min_ghost_cell_width = 7
+   use_second_velocity_correction = USE_SECOND_VELOCITY_CORRECTION
+   use_current_mesh_configuration = USE_CURR_MESH_CONFIG
+   use_phong_normals              = USE_PHONG_NORMALS
+   exterior_calc_coeff            = EXTERIOR_CALC_COEF
 }
 
 INSCollocatedHierarchyIntegrator {
@@ -157,6 +199,9 @@ INSCollocatedHierarchyIntegrator {
    enable_logging                = ENABLE_LOGGING
    projection_method_type        = PROJECTION_METHOD_TYPE
    use_2nd_order_pressure_update = SECOND_ORDER_PRESSURE_UPDATE
+}
+FEMechanicsExplicitIntegrator {
+	use_consistent_mass_matrix    = USE_CONSISTENT_MASS_MATRIX
 }
 
 INSStaggeredHierarchyIntegrator {
@@ -191,7 +236,7 @@ Main {
 
 // visualization dump parameters
    viz_writer                  = "VisIt","ExodusII"
-   viz_dump_interval           = int(0.01/DT)
+   viz_dump_interval           = 200//int(0.01/DT)
    viz_dump_dirname            = "viz_IIM2d_glass"
    visit_number_procs_per_file = 1
 
@@ -209,8 +254,8 @@ Main {
 
 CartesianGeometry {
    domain_boxes = [ (0,0) , ( N - 1,  int(L/H)*N - 1) ]
-   x_lo         =  -H/2,  -15*L/16          // lower end of computational domain.
-   x_up         =   H/2,   L/16           // upper end of computational domain.
+   x_lo         =  -H/2,  -7*L/8          // lower end of computational domain.
+   x_up         =   H/2,   L/8           // upper end of computational domain.
    periodic_dimension = 0, 0
 }
 

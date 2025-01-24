@@ -2,6 +2,9 @@
 	"folders": [
 		{
 			"path": "../.."
+		},
+		{
+			"path": "../../../ibamr-opt/examples/IIM"
 		}
 	]
 }

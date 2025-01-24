@@ -39,8 +39,10 @@
 #include <libmesh/enum_solver_package.h>
 #include <libmesh/equation_systems.h>
 #include <libmesh/exodusII_io.h>
+#include <libmesh/edge_edge2.h>
 #include <libmesh/fe.h>
 #include <libmesh/getpot.h>
+#include <libmesh/gmsh_io.h>
 #include <libmesh/gnuplot_io.h>
 #include <libmesh/libmesh.h>
 #include <libmesh/libmesh_config.h>
@@ -75,6 +77,7 @@ static BoundaryInfo* lag_bdry_info;
 
 // Tether (penalty) force function for the solid blocks.
 static double kappa_s = 1.0e6;
+static double kappa_plate = 1.0e3;
 static double eta_s = 1.0e6;
 static double DX = 0.01;
 static double DT = 0.001;
@@ -256,6 +259,27 @@ tether_force_function(VectorValue<double>& F,
 } // tether_force_function
 
 void
+tether_force_function_lower(VectorValue<double>& F,
+                      const VectorValue<double>& n,
+                      const VectorValue<double>& /*N*/,
+                      const TensorValue<double>& /*FF*/,
+                      const libMesh::Point& x,
+                      const libMesh::Point& X,
+                      Elem* const /*elem*/,
+                      const unsigned short /*side*/,
+                      const vector<const vector<double>*>& var_data,
+                      const vector<const vector<VectorValue<double> >*>& /*grad_var_data*/,
+                      double time,
+                      void* /*ctx*/)
+                      {
+                        const std::vector<double>& u = *var_data[0];   
+                        for (unsigned int d = 0; d < NDIM; ++d)
+	                    {
+                            F(d) = kappa_plate * (X(d) - x(d)) - eta_s * u[d];
+                        }
+                        return;
+                      }//tether_force_function_lower
+void
 PK1_dev_stress_function_disk(TensorValue<double>& PP,
                              const TensorValue<double>& FF,
                              const libMesh::Point& /*X*/,
@@ -361,6 +385,7 @@ main(int argc, char* argv[])
         const string viz_dump_dirname = app_initializer->getVizDumpDirectory();
         const string exodus_filename = viz_dump_dirname + "/disk.ex2";
         const string exodus_bndry_filename = viz_dump_dirname + "/disk_bndry.ex2";
+        const string exodus_lower_filename = viz_dump_dirname + "/lower.ex2";
 
         const bool dump_restart_data = app_initializer->dumpRestartData();
         const int restart_dump_interval = app_initializer->getRestartDumpInterval();
@@ -383,8 +408,22 @@ main(int argc, char* argv[])
         double MAX_LEVELS = input_db->getDouble("MAX_LEVELS");
         DT = input_db->getDouble("DT");
         const double ds = input_db->getDouble("MFAC") * DX;
+
+        const double left_end = input_db->getDouble("LEFT_END");
+        const double right_end = input_db->getDouble("RIGHT_END");
+        const double bottom_plane_height = input_db->getDouble("BOTTOM_PLANE_HEIGHT");
+        const double length_plate = right_end - left_end;
+        const unsigned int n_elem_gen = static_cast<int>(length_plate/ds);
+        const double initial_com_x = input_db->getDouble("COM_X");
+        const double initial_com_y = input_db->getDouble("COM_Y");
+        const double initial_radius = input_db->getDouble("RADIUS");
+        const string mesh_name = input_db->getString("MESH_NAME");
+        const bool use_gmesh_input = input_db->getBool("USE_GMSH_INPUT");
+
+        kappa_plate = input_db->getDouble("KAPPA_PLATE");
+
         string elem_type = input_db->getString("ELEM_TYPE");
-        const double R = 0.2;
+        const double R = 0.1;
         if (NDIM == 2 && (elem_type == "TRI3" || elem_type == "TRI6"))
         {
 #ifdef LIBMESH_HAVE_TRIANGLE
@@ -435,8 +474,8 @@ main(int argc, char* argv[])
         {
             Node* n = *it;
             libMesh::Point& X = *n;
-            X(0) += 0.6;
-            X(1) += 0.5;
+            X(0) += initial_com_x;
+            X(1) += initial_com_y;//adjusts the center of the circle
         }
 
         mesh.prepare_for_use();
@@ -444,6 +483,44 @@ main(int argc, char* argv[])
         BoundaryMesh boundary_mesh(mesh.comm(), mesh.mesh_dimension() - 1);
         mesh.boundary_info->sync(boundary_mesh);
         boundary_mesh.prepare_for_use();
+
+        //setup lower interface
+        Mesh mesh_lower(init.comm(), NDIM);
+
+
+        libMesh::GmshIO gmsh_io(mesh_lower);
+        if(use_gmesh_input){
+            gmsh_io.read(mesh_name);//only do this if we dont want to use the generic plate
+        }
+
+        else{
+            //create bottom plate
+            int node_id = 0;
+            mesh_lower.get_boundary_info().clear_boundary_node_ids();
+
+            
+            for (unsigned int i = 0; i <= n_elem_gen; i++){
+                mesh_lower.add_point(libMesh::Point(right_end - ds * i, bottom_plane_height),node_id++); //generate opposite direction so that n is opposite of upper plate
+            }
+
+            
+            //add Elems using adjacent nodes
+            for (unsigned int i = 0; i < n_elem_gen; i++){
+                Elem* elem = mesh_lower.add_elem(new Edge2);
+                elem->set_node(0) = mesh_lower.node_ptr(i);
+                elem->set_node(1) = mesh_lower.node_ptr(i+1);
+            }
+
+        }
+        mesh_lower.prepare_for_use();
+
+        const int CIRCLE_MESH_ID = 1;
+        const int LOWER_MESH_ID = 0;
+        
+        vector<MeshBase*> meshes;
+
+        meshes.push_back(&mesh_lower);
+        meshes.push_back(&boundary_mesh);
 
         c1_s = input_db->getDouble("C1_S");
         pr = input_db->getDouble("POISSON_RATIO");
@@ -496,12 +573,12 @@ main(int argc, char* argv[])
         Pointer<IIMethod> ibfe_bndry_ops =
             new IIMethod("IIMethod",
                          app_initializer->getComponentDatabase("IIMethod"),
-                         &boundary_mesh,
+                         meshes,
                          app_initializer->getComponentDatabase("GriddingAlgorithm")->getInteger("max_levels"));
         vector<Pointer<IBStrategy> > ib_method_ops(2);
         ib_method_ops[0] = fem_solver;
         ib_method_ops[1] = ibfe_bndry_ops;
-
+        
         Pointer<IBHierarchyIntegrator> time_integrator =
             new IBExplicitHierarchyIntegrator("IBHierarchyIntegrator",
                                               app_initializer->getComponentDatabase("IBHierarchyIntegrator"),
@@ -550,9 +627,16 @@ main(int argc, char* argv[])
         fem_solver->registerPK1StressFunction(PK1_dev_stress_data);
 
         IIMethod::LagSurfaceForceFcnData surface_fcn_data(tether_force_function, sys_data);
-        ibfe_bndry_ops->registerLagSurfaceForceFunction(surface_fcn_data);
+        ibfe_bndry_ops->registerLagSurfaceForceFunction(surface_fcn_data,1);
 
-        EquationSystems* bndry_equation_systems = ibfe_bndry_ops->getFEDataManager()->getEquationSystems();
+        EquationSystems* bndry_equation_systems = ibfe_bndry_ops->getFEDataManager(1)->getEquationSystems();
+
+        IIMethod::LagSurfaceForceFcnData tether_force_lower_data(tether_force_function_lower, sys_data);
+        ibfe_bndry_ops->registerLagSurfaceForceFunction(tether_force_lower_data,0);
+        EquationSystems* lower_equation_systems = ibfe_bndry_ops->getFEDataManager(0)->getEquationSystems();
+
+
+
 
         FEMechanicsBase::PK1StressFcnData PK1_dil_stress_data(PK1_dil_stress_function_disk);
         PK1_dil_stress_data.quad_order =
@@ -617,6 +701,7 @@ main(int argc, char* argv[])
 
         libMesh::UniquePtr<ExodusII_IO> exodus_io(uses_exodus ? new ExodusII_IO(mesh) : NULL);
         libMesh::UniquePtr<ExodusII_IO> exodus_bndry_io(uses_exodus ? new ExodusII_IO(boundary_mesh) : NULL);
+        libMesh::UniquePtr<ExodusII_IO> exodus_lower(uses_exodus ? new ExodusII_IO(mesh_lower) : NULL);
 
         ibfe_bndry_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
@@ -649,6 +734,9 @@ main(int argc, char* argv[])
 
                 exodus_bndry_io->write_timestep(
                     exodus_bndry_filename, *bndry_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+                exodus_lower->write_timestep(
+                            exodus_lower_filename, *lower_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+            
             }
         }
 
@@ -761,6 +849,9 @@ main(int argc, char* argv[])
                                                     *bndry_equation_systems,
                                                     iteration_num / viz_dump_interval + 1,
                                                     loop_time);
+                        exodus_lower->write_timestep(exodus_lower_filename,
+                                                 *lower_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+              
                 }
             }
             if (dump_restart_data && (iteration_num % restart_dump_interval == 0))

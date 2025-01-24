@@ -1,0 +1,56 @@
+VelocityBcCoefs_0 {
+    p_e = P_E
+    D = D
+    L = L
+    X1_lower = 0.5*H - 0.5*D 
+    X1_upper = X1_lower + D
+    mu = MU
+    H = H
+    U_MAX = U_MAX
+
+
+    acoef_function_0 = "( sqrt((X1 - 0.5*H)*(X1 - 0.5*H) ) < D/2 ? 0.0 : 1.0 )"
+    acoef_function_1 = "( sqrt((X1 - 0.5*H)*(X1 - 0.5*H) ) < D/2 ? 0.0 : 1.0 )"
+    acoef_function_2 = "1.0"
+    acoef_function_3 = "1.0"
+
+    bcoef_function_0 = "( sqrt((X1 - 0.5*H)*(X1 - 0.5*H) ) < D/2 ? 1.0 : 0.0 )"
+    bcoef_function_1 = "( sqrt((X1 - 0.5*H)*(X1 - 0.5*H) ) < D/2 ? 1.0 : 0.0 )"
+    bcoef_function_2 = "0.0"
+    bcoef_function_3 = "0.0"
+
+    gcoef_function_0 = "( sqrt((X1 - 0.5*H)*(X1 - 0.5*H) ) < D/2 ? -p_e : 0.0 )" 
+    gcoef_function_1 = "( sqrt((X1 - 0.5*H)*(X1 - 0.5*H) ) < D/2 ? p_e : 0.0 )" 
+    gcoef_function_2 = "0.0"
+    gcoef_function_3 = "0.0"
+}
+
+
+VelocityBcCoefs_1 {
+
+    p_e = P_E
+    D = D
+    L = L
+    X1_lower = X1_lower 
+    X1_upper = X1_upper
+    mu = MU
+    H = H
+
+   acoef_function_0 = "1.0"
+   acoef_function_1 = "1.0"
+   acoef_function_2 = "0.0"
+   acoef_function_3 = "0.0"
+
+   
+   bcoef_function_0 = "0.0"
+   bcoef_function_1 = "0.0"
+   bcoef_function_2 = "1.0"
+   bcoef_function_3 = "1.0"
+
+
+   gcoef_function_0 = "0.0"
+   gcoef_function_1 = "0.0"
+   gcoef_function_2 = "0.0"
+   gcoef_function_3 = "0.0"
+
+}

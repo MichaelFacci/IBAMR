@@ -1722,11 +1722,24 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                         int local_patch_num_secondary = 0;
                                         //std::cout << "axis = "<<axis<<"\n";
                                         //std::cout << "made it to right outside the patch loop\n";
-                                        //get active patch
-                                        for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_secondary){
+                                        //get active patch OLD CODE:
+
+
+for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_secondary){
                                             //std::cout << "made it to right inside the patch loop\n";
                                             const std::vector<Elem*>& patch_elems_secondary =
                                                 d_fe_data_managers[part_second]->getActivePatchElementMap()[local_patch_num_secondary];
+
+
+
+
+                                        //Actually, let's grab the local patch that we are currently are on for the
+                                        //1 cut element. Then only search over that one patch, on every other interface part.
+
+                                        for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_secondary){
+                                            //std::cout << "made it to right inside the patch loop\n";
+                                            const std::vector<Elem*>& patch_elems_secondary =
+                                                d_fe_data_managers[part_second]->getActivePatchElementMap()[local_patch_num_secondary]; //gets a list of elems in the 1 cut patch on part#2
                                             const size_t num_active_patch_elems_secondary = patch_elems_secondary.size();
                                             if (!num_active_patch_elems_secondary) continue;
                                             
@@ -1933,7 +1946,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                                     }
                                                 }   
                                             }
-                                        }
+                                        //}
                                     }
                                 }
                             }
