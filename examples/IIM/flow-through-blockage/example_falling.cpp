@@ -389,7 +389,8 @@ main(int argc, char* argv[])
         const string exodus_upper_filename = viz_dump_dirname + "/upper.ex2";
         const string exodus_blockage_filename = viz_dump_dirname + "/blockage.ex2";
         const string exodus_blockage2_filename = viz_dump_dirname + "/blockage2.ex2";
-
+        const string exodus_blockage_back_filename = viz_dump_dirname + "/blockage_back.ex2";
+	const int aaaaa = 19;
         const bool dump_restart_data = app_initializer->dumpRestartData();
         const int restart_dump_interval = app_initializer->getRestartDumpInterval();
         const string restart_dump_dirname = app_initializer->getRestartDumpDirectory();
@@ -543,25 +544,34 @@ main(int argc, char* argv[])
 
         Mesh mesh_solid_blockage(init.comm(), NDIM);
         Mesh mesh_solid_blockage2(init.comm(), NDIM);
+        Mesh mesh_solid_blockage_back(init.comm(),NDIM);
 
         
 
         if(use_rectangular_blockage){
             //upper block
             const double blockage_width = 0.26;
-            const double blockage_height = 0.26;
+            const double blockage_height = 0.20;
             const double blockage_nx = static_cast<int>(blockage_width/ds);
             const double blockage_ny = static_cast<int>(blockage_height/ds);
                                 //build_square(&mesh,nx,ny,xmin,xmax,ymin,ymax,elem_type,false(optional))
-            MeshTools::Generation::build_square(mesh_solid_blockage, blockage_nx, blockage_ny, 1 - blockage_width, 1, (upper_plate_height-0.01)-blockage_height,(upper_plate_height-0.01), Utility::string_to_enum<ElemType>("TRI3"));
+            MeshTools::Generation::build_square(mesh_solid_blockage, blockage_nx, blockage_ny, 1 - blockage_width, 1, (upper_plate_height-0.01)-blockage_height,(upper_plate_height-DX*2.5), Utility::string_to_enum<ElemType>("TRI3"));
 
             //lower block
             const double blockage_width_2 = 0.26;
-            const double blockage_height_2 = 0.26;
+            const double blockage_height_2 = 0.20;
             const double blockage_nx_2 = static_cast<int>(blockage_width_2/ds);
             const double blockage_ny_2 = static_cast<int>(blockage_height_2/ds);
                                 //build_square(&mesh,nx,ny,xmin,xmax,ymin,ymax,elem_type,false(optional))
-            MeshTools::Generation::build_square(mesh_solid_blockage2, blockage_nx_2, blockage_ny_2, 1 - blockage_width_2, 1, (lower_plate_height+0.01),(lower_plate_height+0.01)+blockage_height_2, Utility::string_to_enum<ElemType>("TRI3"));
+            MeshTools::Generation::build_square(mesh_solid_blockage2, blockage_nx_2, blockage_ny_2, 1 - blockage_width_2, 1, (lower_plate_height+DX*2.5),(lower_plate_height+0.01)+blockage_height_2, Utility::string_to_enum<ElemType>("TRI3"));
+
+            //backboard block
+            const double blockage_width_back = 0.2;
+            const double blockage_height_back = 0.2;
+            const double blockage_nx_back = static_cast<int>(blockage_width_back/ds);
+            const double blockage_ny_back = static_cast<int>(blockage_height_back/ds);
+                                //build_square(&mesh,nx,ny,xmin,xmax,ymin,ymax,elem_type,false(optional))
+            MeshTools::Generation::build_square(mesh_solid_blockage_back, blockage_nx_back, blockage_ny_back, 1 + DX, 1 + DX +blockage_width_back, 0.4, 0.6, Utility::string_to_enum<ElemType>("TRI3"));
 
 
         }
@@ -574,6 +584,10 @@ main(int argc, char* argv[])
         mesh_solid_blockage2.boundary_info->sync(mesh_blockage2);
         mesh_blockage2.prepare_for_use();
 
+        BoundaryMesh mesh_blockage_back(mesh_solid_blockage_back.comm(), mesh_solid_blockage_back.mesh_dimension() - 1);
+        mesh_solid_blockage_back.boundary_info->sync(mesh_blockage_back);
+        mesh_blockage_back.prepare_for_use();
+
 
 
 
@@ -583,6 +597,8 @@ main(int argc, char* argv[])
         const int UPPER_MESH_ID = 2;
         const int BLOCKAGE_MESH_ID = 3;
         const int BLOCKAGE_MESH_2_ID = 4;
+        const int BLOCKAGE_MESH_BACK_ID = 5;
+
 
         
         vector<MeshBase*> meshes;
@@ -591,7 +607,8 @@ main(int argc, char* argv[])
         meshes.push_back(&mesh_lower);
         meshes.push_back(&mesh_upper);
         meshes.push_back(&mesh_blockage);     
-        meshes.push_back(&mesh_blockage2);       
+        meshes.push_back(&mesh_blockage2);   
+        meshes.push_back(&mesh_blockage_back);    
 
         c1_s = input_db->getDouble("C1_S");
         pr = input_db->getDouble("POISSON_RATIO");
@@ -725,6 +742,10 @@ main(int argc, char* argv[])
         ibfe_bndry_ops->registerLagSurfaceForceFunction(tether_force_blockage2_data,4);
         EquationSystems* blockage2_equation_systems = ibfe_bndry_ops->getFEDataManager(4)->getEquationSystems();
 
+        IIMethod::LagSurfaceForceFcnData tether_force_blockage_back_data(tether_force_function_stationary, sys_data);
+        ibfe_bndry_ops->registerLagSurfaceForceFunction(tether_force_blockage_back_data,5);
+        EquationSystems* blockage_back_equation_systems = ibfe_bndry_ops->getFEDataManager(5)->getEquationSystems();
+
 
         std::cout<<"put all eqn systems in\n";
 
@@ -796,6 +817,7 @@ main(int argc, char* argv[])
         libMesh::UniquePtr<ExodusII_IO> exodus_upper(uses_exodus ? new ExodusII_IO(mesh_upper) : NULL);
         libMesh::UniquePtr<ExodusII_IO> exodus_blockage(uses_exodus ? new ExodusII_IO(mesh_blockage) : NULL);
         libMesh::UniquePtr<ExodusII_IO> exodus_blockage2(uses_exodus ? new ExodusII_IO(mesh_blockage2) : NULL);
+        libMesh::UniquePtr<ExodusII_IO> exodus_blockage_back(uses_exodus ? new ExodusII_IO(mesh_blockage_back) : NULL);
 
         ibfe_bndry_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
@@ -837,6 +859,9 @@ main(int argc, char* argv[])
                             exodus_blockage_filename, *blockage_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
                 exodus_blockage2->write_timestep(
                             exodus_blockage2_filename, *blockage2_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+                exodus_blockage_back->write_timestep(
+                            exodus_blockage_back_filename, *blockage_back_equation_systems, iteration_num/viz_dump_interval+1, loop_time);
+                
             
             }
         }
@@ -958,6 +983,8 @@ main(int argc, char* argv[])
                             exodus_blockage_filename, *blockage_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
                         exodus_blockage2->write_timestep(
                             exodus_blockage2_filename, *blockage2_equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+                        exodus_blockage_back->write_timestep(
+                            exodus_blockage_back_filename, *blockage_back_equation_systems, iteration_num/viz_dump_interval+1, loop_time);
             
               
                 }

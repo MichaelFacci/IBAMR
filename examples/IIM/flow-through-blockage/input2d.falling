@@ -1,4 +1,5 @@
 // physical parameters
+// INPUT FILE FOR THE TUBE WITH BLOCKAGE TO TEST NEAR CONTACT
 MU  = 0.01
 RHO = 1.0
 L   = 2.0
@@ -15,7 +16,7 @@ ELEM_TYPE = "TRI3"                                  // type of element to use fo
 PK1_DEV_QUAD_ORDER = "THIRD"
 PK1_DIL_QUAD_ORDER = "FIRST"
 
-P_E = 2
+P_E = 1.2
 // model parameters
 U_MAX = 2.0
 C1_S = 0.1
@@ -28,7 +29,7 @@ STRESS_FUNCTION = "MODIFIED"
 USE_VOLUMETRIC_TERM = TRUE
 YOUNGS_MOD     = 1e3//250
 TRACTION_FORCE = 6.25
-SHEAR_MOD      = 1.0e1 //YOUNGS_MOD / 2.0 / (.5 + 1.0)
+SHEAR_MOD      = 1.0e2 //YOUNGS_MOD / 2.0 / (.5 + 1.0)
 POISSON_RATIO  = 0.499
 BULK_MOD 	   = 2.0 * SHEAR_MOD * (1.0 + POISSON_RATIO) / (3.0 - 6.0 * POISSON_RATIO)
 SAFETY         = 0.5
@@ -67,7 +68,7 @@ ENABLE_LOGGING             = TRUE
 
 
 NCYCLE = 5
-KAPPA_S = 1.5e3 //0.0001/DT^2// 0.001 * DX/DT^2  //0.01 * DX/DT^2 //5e2
+KAPPA_S = 2.5e3 //0.0001/DT^2// 0.001 * DX/DT^2  //0.01 * DX/DT^2 //5e2
 ETA_S =  0.5 //0.0005/DT //0.005/DT //0.05 * DX/DT
 
 KAPPA_PLATE = 1.0e4
@@ -78,14 +79,14 @@ SIM_NUM = 9
 LOWER_PLATE_HEIGHT = 0.2
 UPPER_PLATE_HEIGHT = 0.8
 D = UPPER_PLATE_HEIGHT - LOWER_PLATE_HEIGHT
-BALL_COM_X = 0.2
-BALL_COM_Y = 0.5
+BALL_COM_X = 0.6
+BALL_COM_Y = 0.50
 BALL_RADIUS = 0.05
 KAPPA_STATIONARY = 1.0e4
 
 
 BOTTOM_PLANE_HEIGHT = 0.2
-USE_SECOND_VELOCITY_CORRECTION = FALSE
+USE_SECOND_VELOCITY_CORRECTION = TRUE
 USE_CURR_MESH_CONFIG = TRUE
 //USE_PHONG_NORMALS = FALSE
 USE_DISCON_ELEMS = TRUE
@@ -265,7 +266,7 @@ Main {
 // visualization dump parameters
    viz_writer                  = "VisIt","ExodusII"
    viz_dump_interval           = 400 //int(0.25/DT)
-   viz_dump_dirname            = "viz_IB2d_PR_499_dt5em4_k1000_em5"
+   viz_dump_dirname            = "viz_IIM_2cut"
    visit_number_procs_per_file = 1
 
 // restart dump parameters

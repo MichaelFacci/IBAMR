@@ -49,6 +49,8 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/boundary_mesh.h>
 #include <libmesh/edge_edge2.h>
+#include <libmesh/edge_edge3.h>
+
 #include <libmesh/equation_systems.h>
 #include <libmesh/exodusII_io.h>
 #include <libmesh/mesh.h>
@@ -108,9 +110,10 @@ tether_force_function_inner(VectorValue<double>& F,
 {
     const std::vector<double>& U = *var_data[0];
     
-        
-       F(0) = kappa_s * (X(0)*cos(OMEGA1*time) - X(1)*sin(OMEGA1*time) - x(0));
-        F(1) = kappa_s * (X(0)*sin(OMEGA1*time) + X(1)*cos(OMEGA1*time) - x(1));
+        //u(x,y) = -omega1*y
+        //v(x,y) = omega1 *x
+       F(0) = kappa_s * (X(0)*cos(OMEGA1*time) - X(1)*sin(OMEGA1*time) - x(0)) + eta_s * (-OMEGA1*x(1) - U[0]);
+       F(1) = kappa_s * (X(0)*sin(OMEGA1*time) + X(1)*cos(OMEGA1*time) - x(1)) + eta_s * (OMEGA1*x(0) - U[1]);
         
      //   F(0) = -Fi*nn[1];
       //  F(1) = Fi*nn[0];
@@ -148,19 +151,23 @@ tether_force_function_outer(VectorValue<double>& F,
                       double time,
                       void* /*ctx*/)
 {
-    //~ const std::vector<double>& U = *var_data[0];
+    const std::vector<double>& U = *var_data[0];
     
         
         //~ F(0) = -Fo*nn[1];
         //~ F(1) = Fo*nn[0];
         //~ pout<<"Kappa = "<< kappa_s<<"\n\n";
         
+
+        F(0) = kappa_s * (X(0)*cos(OMEGA2*time) - X(1)*sin(OMEGA2*time) - x(0)) + eta_s * (-OMEGA2*x(1) - U[0]);
+        F(1) = kappa_s * (X(0)*sin(OMEGA2*time) + X(1)*cos(OMEGA2*time) - x(1)) + eta_s * (OMEGA2*x(0) - U[1]);
+ /*
     for (unsigned int d = 0; d < NDIM; ++d)
 	{
 		F(d) = kappa_s * (X(d) - x(d));
 		// + eta_s * (0.0 - U[d]);
 	}
-        
+        */
     return;
 } // tether_force_function
 
@@ -208,6 +215,15 @@ void postprocess_traction_data(tbox::Pointer<tbox::Database> input_db,
                       const int iteration_num,
                       const double loop_time,
                       const string& data_dump_dirname);
+
+void
+postprocess_data(tbox::Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
+                tbox::Pointer<INSHierarchyIntegrator> navier_stokes_integrator,
+                Mesh& mesh,
+                EquationSystems* equation_systems,
+                const int iteration_num,
+                const double loop_time,
+                const string& data_dump_dirname);
 
 /*******************************************************************************
  * For each run, the input filename and restart information (if needed) must   *
@@ -283,29 +299,62 @@ main(int argc, char* argv[])
          AA = input_db->getDouble("AA");	// radius of the inner circle
          BB = input_db->getDouble("BB");    // radius of the outer circle 
 
+        bool use_quadratic_elements = input_db->getBool("USE_QUADRATIC_ELEMS");
+
         
 
         const int num_circum_nodes1 = ceil(2.0 * M_PI * R / ds);
         std::cout <<"inner num nodes is: "<<num_circum_nodes1<<"\n";
-        for (int k = 0; k < num_circum_nodes1; ++k)
-        {
-            const double theta1 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes1);
-            mesh_interior.add_point(libMesh::Point(R * cos(theta1), R * sin(theta1)));
+        
+        if(!use_quadratic_elements){
+            for (int k = 0; k < num_circum_nodes1; ++k)
+            {
+                const double theta1 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes1);
+                mesh_interior.add_point(libMesh::Point(R * cos(theta1), R * sin(theta1)));
+            }
+
+            for (unsigned int i = 0; i < num_circum_nodes1 ; i++){
+                std::cout <<"node id is: "<<i<<"\n";
+                if(i != num_circum_nodes1 - 1){
+                    Elem* elem = mesh_interior.add_elem(new Edge2);
+                    elem->set_node(0) = mesh_interior.node_ptr(i);
+                    elem->set_node(1) = mesh_interior.node_ptr(i+1);
+                }
+                else{
+                    Elem* elem = mesh_interior.add_elem(new Edge2);
+                    elem->set_node(0) = mesh_interior.node_ptr(i);
+                    elem->set_node(1) = mesh_interior.node_ptr(0);
+                }
+            }
+        }
+        else{ //if using quadratic elements
+            std::cout<<"Using quadratic elements for inner cylinder.\n\n";
+            const double base_theta = 2.0 * M_PI  / static_cast<double>(num_circum_nodes1);
+            for (int k = 0; k < num_circum_nodes1; ++k)
+            {
+                const double theta1 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes1);
+                mesh_interior.add_point(libMesh::Point(R * cos(theta1), R * sin(theta1))); //end of elem node
+
+                mesh_interior.add_point(libMesh::Point(R * cos(theta1+base_theta/2.0), R * sin(theta1+base_theta/2.0))); //midpoint of elem for quad elems
+            }
+
+            for (unsigned int i = 0; i < 2*num_circum_nodes1 ; i+=2){
+                std::cout <<"node id is: "<<i<<"\n";
+                if(i < 2*num_circum_nodes1 - 2){
+                    Elem* elem = mesh_interior.add_elem(new Edge3);
+                    elem->set_node(0) = mesh_interior.node_ptr(i);
+                    elem->set_node(1) = mesh_interior.node_ptr(i+2);
+                    elem->set_node(2) = mesh_interior.node_ptr(i+1);
+                }
+                else{
+                    Elem* elem = mesh_interior.add_elem(new Edge3);
+                    elem->set_node(0) = mesh_interior.node_ptr(i);
+                    elem->set_node(1) = mesh_interior.node_ptr(0);
+                    elem->set_node(2) = mesh_interior.node_ptr(i+1);
+                }
+            }
         }
 
-        for (unsigned int i = 0; i < num_circum_nodes1 ; i++){
-            std::cout <<"node id is: "<<i<<"\n";
-            if(i != num_circum_nodes1 - 1){
-                Elem* elem = mesh_interior.add_elem(new Edge2);
-                elem->set_node(0) = mesh_interior.node_ptr(i);
-                elem->set_node(1) = mesh_interior.node_ptr(i+1);
-            }
-            else{
-                Elem* elem = mesh_interior.add_elem(new Edge2);
-                elem->set_node(0) = mesh_interior.node_ptr(i);
-                elem->set_node(1) = mesh_interior.node_ptr(0);
-            }
-        }
 
         mesh_interior.prepare_for_use();  
 
@@ -319,26 +368,56 @@ main(int argc, char* argv[])
         Mesh mesh_exterior(init.comm(), NDIM);
         const int num_circum_nodes2 = ceil(2.0 * M_PI * Ro / ds);
         std::cout <<"outer num nodes is: "<<num_circum_nodes2<<"\n";
-        for (int k = 0; k < num_circum_nodes2; ++k)
-        {
-            const double theta2 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes2);
-            mesh_exterior.add_point(libMesh::Point( Ro * cos(theta2) + e, Ro * sin(theta2)));
+
+        if(!use_quadratic_elements){
+            for (int k = 0; k < num_circum_nodes2; ++k)
+            {
+                const double theta2 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes2);
+                mesh_exterior.add_point(libMesh::Point( Ro * cos(theta2) + e, Ro * sin(theta2)));
+            }
+
+            for (unsigned int i = 0; i < num_circum_nodes2 ; i++){
+                std::cout <<"node id is: "<<i<<"\n";
+                if(i != num_circum_nodes2 - 1){
+                    Elem* elem = mesh_exterior.add_elem(new Edge2);
+                    elem->set_node(1) = mesh_exterior.node_ptr(i);
+                    elem->set_node(0) = mesh_exterior.node_ptr(i+1);
+                }
+                else{
+                    Elem* elem = mesh_exterior.add_elem(new Edge2);
+                    elem->set_node(1) = mesh_exterior.node_ptr(i);
+                    elem->set_node(0) = mesh_exterior.node_ptr(0);
+                }
+            }
+        }
+        else{
+            std::cout<<"Using quadratic elements for outer cylinder.\n\n";
+            const double base_theta_2 = 2.0 * M_PI  / static_cast<double>(num_circum_nodes2);
+            for (int k = 0; k < num_circum_nodes2; ++k)
+            {
+                const double theta2 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes2);
+                mesh_exterior.add_point(libMesh::Point(Ro * cos(theta2)+e, Ro * sin(theta2))); //end of elem node
+
+                mesh_exterior.add_point(libMesh::Point(Ro * cos(theta2+base_theta_2/2.0)+e, Ro * sin(theta2+base_theta_2/2.0))); //midpoint of elem for quad elems
+            }
+
+            for (unsigned int i = 0; i < 2*num_circum_nodes1 ; i+=2){
+                std::cout <<"node id is: "<<i<<"\n";
+                if(i < 2*num_circum_nodes2 - 2){
+                    Elem* elem = mesh_exterior.add_elem(new Edge3);
+                    elem->set_node(0) = mesh_exterior.node_ptr(i);
+                    elem->set_node(1) = mesh_exterior.node_ptr(i+2);
+                    elem->set_node(2) = mesh_exterior.node_ptr(i+1);
+                }
+                else{
+                    Elem* elem = mesh_interior.add_elem(new Edge3);
+                    elem->set_node(0) = mesh_exterior.node_ptr(i);
+                    elem->set_node(1) = mesh_exterior.node_ptr(0);
+                    elem->set_node(2) = mesh_exterior.node_ptr(i+1);
+                }
+            }
         }
 
-        for (unsigned int i = 0; i < num_circum_nodes2 ; i++){
-            std::cout <<"node id is: "<<i<<"\n";
-            if(i != num_circum_nodes2 - 1){
-                Elem* elem = mesh_exterior.add_elem(new Edge2);
-                elem->set_node(1) = mesh_exterior.node_ptr(i);
-                elem->set_node(0) = mesh_exterior.node_ptr(i+1);
-            }
-            else{
-                Elem* elem = mesh_exterior.add_elem(new Edge2);
-                elem->set_node(1) = mesh_exterior.node_ptr(i);
-                elem->set_node(0) = mesh_exterior.node_ptr(0);
-            }
-        }
-        
         mesh_exterior.prepare_for_use();
 
         Mesh& outer_mesh =  mesh_exterior;
@@ -431,7 +510,7 @@ main(int argc, char* argv[])
             Pointer<CartGridFunction> p_init = new muParserCartGridFunction(
                 "p_init", app_initializer->getComponentDatabase("PressureInitialConditions"),
                 grid_geometry);
-            //~ navier_stokes_integrator->registerPressureInitialConditions(p_init);
+             navier_stokes_integrator->registerPressureInitialConditions(p_init);
         //~ }
         
         
@@ -572,18 +651,18 @@ main(int argc, char* argv[])
                 TimerManager::getManager()->print(plog);
             }
        
-			//~ if (dump_viz_data && (iteration_num % viz_dump_interval == 0 || last_step))
-            //~ {
-             //~ if  (input_db->getBool("USE_VELOCITY_JUMP_CONDITIONS"))
-                   //~ postprocess_data(patch_hierarchy,
-									//~ navier_stokes_integrator,
-									//~ inner_mesh,
-									//~ inner_equation_systems,
-									//~ iteration_num,
-									//~ loop_time,
-									//~ postproc_data_dump_dirname);
+			if (dump_viz_data && (iteration_num % viz_dump_interval == 0 || last_step))
+             {
+             if  (input_db->getBool("USE_VELOCITY_JUMP_CONDITIONS"))
+             postprocess_data(patch_hierarchy,
+			 navier_stokes_integrator,
+			inner_mesh,
+			inner_equation_systems,
+			iteration_num,
+			loop_time,
+			postproc_data_dump_dirname);
 				
-            //~ }
+            }
             
 
 			if (dump_postproc_data &&
@@ -658,12 +737,12 @@ main(int argc, char* argv[])
                   << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
              
              
-        //~ HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
-        //~ hier_cc_data_ops.subtract(p_idx, p_idx, p_cloned_idx);
-        //~ pout << "Error in the Eulerian p at time " << loop_time - 0.5 * dt << ":\n"
-             //~ << "  L2-norm:  " << hier_cc_data_ops.L2Norm(p_idx, wgt_cc_idx) << "\n"
-             //~ << "  max-norm: " << hier_cc_data_ops.maxNorm(p_idx, wgt_cc_idx) << "\n"
-             //~ << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
+         hier_cc_data_ops.subtract(p_idx, p_idx, p_cloned_idx);
+         pout << "Error in the Eulerian p at time " << loop_time - 0.5 * dt << ":\n"
+         << "  L2-norm:  " << hier_cc_data_ops.L2Norm(p_idx, wgt_cc_idx) << "\n"
+         << "  max-norm: " << hier_cc_data_ops.maxNorm(p_idx, wgt_cc_idx) << "\n"
+         << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
                  
                  
              pout<< " MU = "<< MU <<"\n"
@@ -1452,8 +1531,8 @@ void compute_pressure_profile(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                     //~ const double u1 =
                     //~ (*u_data)(SideIndex<NDIM>(upper_idx, 0, SideIndex<NDIM>::Lower));
                     pos_values.push_back(y);
-                    pos_values.push_back(p0);
-                    //~ pos_values.push_back(p0 + (p1 - p0) * (0.0 - x0) / (x1 - x0));
+                    //pos_values.push_back(p0);
+                    pos_values.push_back(p0 + (p1 - p0) * (0.0 - x0) / (x1 - x0));
                 }
             }
         }

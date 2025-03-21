@@ -191,7 +191,7 @@ void pressure_convergence(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                               const double data_time,
                               const string& data_dump_dirname);
 
-void postprocess_force_data(tbox::Pointer<tbox::Database> input_db,
+void postprocess_data(
                       tbox::Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                       tbox::Pointer<INSHierarchyIntegrator> navier_stokes_integrator,
                       Mesh& mesh,
@@ -208,6 +208,17 @@ void postprocess_traction_data(tbox::Pointer<tbox::Database> input_db,
                       const int iteration_num,
                       const double loop_time,
                       const string& data_dump_dirname);
+
+void postprocess_force_data(Pointer<Database> input_db,
+                    Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
+                    Pointer<INSHierarchyIntegrator> navier_stokes_integrator,
+                    Mesh& mesh,
+                    EquationSystems* equation_systems,
+                    const int iteration_num,
+                    const double loop_time,
+                    const string& data_dump_dirname,
+                    bool isUpper,
+                    unsigned int part);
 
 /*******************************************************************************
  * For each run, the input filename and restart information (if needed) must   *
@@ -656,14 +667,23 @@ main(int argc, char* argv[])
                  << "  L2-norm:  " << hier_sc_data_ops.L2Norm(u_idx, wgt_sc_idx) << "\n"
                  << "  max-norm: " << hier_sc_data_ops.maxNorm(u_idx, wgt_sc_idx) << "\n"
                   << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+
+
+                  postprocess_data(patch_hierarchy,
+                     navier_stokes_integrator,
+                     inner_mesh,
+                     inner_equation_systems,
+                     iteration_num,
+                     loop_time,
+                     postproc_data_dump_dirname);
              
              
-        //~ HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
-        //~ hier_cc_data_ops.subtract(p_idx, p_idx, p_cloned_idx);
-        //~ pout << "Error in the Eulerian p at time " << loop_time - 0.5 * dt << ":\n"
-             //~ << "  L2-norm:  " << hier_cc_data_ops.L2Norm(p_idx, wgt_cc_idx) << "\n"
-             //~ << "  max-norm: " << hier_cc_data_ops.maxNorm(p_idx, wgt_cc_idx) << "\n"
-             //~ << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
+         hier_cc_data_ops.subtract(p_idx, p_idx, p_cloned_idx);
+         pout << "Error in the Eulerian p at time " << loop_time - 0.5 * dt << ":\n"
+         << "  L2-norm:  " << hier_cc_data_ops.L2Norm(p_idx, wgt_cc_idx) << "\n"
+         << "  max-norm: " << hier_cc_data_ops.maxNorm(p_idx, wgt_cc_idx) << "\n"
+         << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
                  
                  
              pout<< " MU = "<< MU <<"\n"
@@ -963,7 +983,7 @@ void pressure_convergence(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                     {
 						p_ex_qp = 0.5*AA*AA*(x*x + y*y) - 0.5*BB*BB/(x*x + y*y) + AA*BB*log(x*x + y*y) + 0.5*OMEGA1*OMEGA1*R*R -(0.5*AA*AA*(R*R) - 0.5*BB*BB/(R*R) + AA*BB*log(R*R))  +  shift;
 					}
-						
+                    
 						p_Eulerian_L2_norm += std::abs(p1 - p_ex_qp) * std::abs(p1 - p_ex_qp) * (*wgt_cc_data)(cell_idx);
 						p_Eulerian_max_norm = std::max(p_Eulerian_max_norm, std::abs(p1 - p_ex_qp));
                 }

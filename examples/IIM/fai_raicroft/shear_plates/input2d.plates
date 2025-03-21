@@ -195,7 +195,7 @@ Main {
 // visualization dump parameters
    viz_writer                  = "VisIt","ExodusII"
    viz_dump_interval           =  int(0.2/DT)
-   viz_dump_dirname            = "viz_1cut"
+   viz_dump_dirname            = "viz_both_normals_flipped"
    visit_number_procs_per_file = 1
 
 // restart dump parameters
@@ -204,7 +204,7 @@ Main {
 
 // hierarchy data dump parameters
    data_dump_interval          = int(0.2/DT) //int(0.5/DT)
-   data_dump_dirname           = "hier_data_IIM_2_cut_N=64"
+   data_dump_dirname           = "hier_data_both_normals_flipped"
 
 // timer dump parameters
    timer_dump_interval         = int(0.2/DT)

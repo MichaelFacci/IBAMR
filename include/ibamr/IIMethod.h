@@ -34,6 +34,8 @@
 #include "libmesh/enum_quadrature_type.h"
 #include "libmesh/vector_value.h"
 
+#include "ibtk/libmesh_rtree_wrappers.h"
+
 #include <limits>
 #include <memory>
 #include <set>
@@ -696,6 +698,14 @@ protected:
     std::vector<libMesh::DenseMatrix<double>> d_current_nodal_normals;
     std::vector<libMesh::DenseMatrix<double>> d_weights;
     std::vector<libMesh::DenseMatrix<double>> d_elem_normals;
+    
+
+    std::vector<std::vector<libMesh::BoundingBox>> d_bounding_boxes; 
+    using RTreeType = decltype(IBTK::pack_rtree_of_indices(d_bounding_boxes[0]));
+    std::vector<std::unique_ptr<RTreeType>> d_rtrees;
+        
+    
+
 
     bool d_use_second_velocity_correction = false; //for 2 cut problem
 

@@ -55,6 +55,7 @@
 #include "tbox/Utilities.h"
 
 #include "libmesh/boundary_info.h"
+#include "libmesh/bounding_box.h"
 #include "libmesh/compare_types.h"
 #include "libmesh/dense_matrix.h"
 #include "libmesh/dense_vector.h"
@@ -90,6 +91,7 @@
 #include "libmesh/type_vector.h"
 #include "libmesh/variant_filter_iterator.h"
 #include "libmesh/vector_value.h"
+#include "ibtk/libmesh_rtree_wrappers.h"
 
 #include "petscvec.h"
 
@@ -1137,6 +1139,78 @@ IIMethod::interpolateVelocity(const int u_data_idx,
         if (u_ghost_fill_sched) u_ghost_fill_sched->fillData(data_time);
     }
 
+    //setup rtree for the velocity interpolation step so that the near contact element search is more efficient
+    //note that this only works in SERIAL
+    // We only need to do this if using the current configuration
+    // for interactions, since the mesh may have moved since last time step
+    if(d_use_second_velocity_correction){
+        if(d_use_current_mesh_configuration){
+            for(unsigned int part = 0; part < d_num_parts; ++part){
+                EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+                const MeshBase& mesh = equation_systems->get_mesh();
+                const unsigned int dim = mesh.mesh_dimension();
+                NumericVector<double>* X_ghost_vec = getMeshCoordinatesNumeric(d_use_current_mesh_configuration,"ib_ghost",part);
+                FEDataManager::SystemDofMapCache& X_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(COORDS_SYSTEM_NAME);
+                boost::multi_array<double, 2> x_node;
+                namespace bgi = boost::geometry::index;
+
+
+                System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+                const DofMap& X_dof_map = X_system.get_dof_map();
+                FEType fe_type = X_dof_map.variable_type(0);            
+                std::unique_ptr<FEBase> fe (FEBase::build(dim,fe_type));
+                QGauss qrule (dim,FIRST);
+                std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
+                // Tell the FE object to use the quad rule
+                fe->attach_quadrature_rule (&qrule);
+                FEDataInterpolation fe_interpolator(mesh.mesh_dimension(), d_fe_data_managers[part]->getFEData());
+                fe_interpolator.attachQuadratureRule(&qrule);
+                fe_interpolator.init();
+
+
+                //need to figure out how to do this in current config still
+                int elem_num = 0;
+                for (const auto & elem : mesh.active_local_element_ptr_range()){
+
+                    //X_dof_indices = X_dof_map_cache.dof_indices(elem); 
+                    
+                    fe->reinit(elem);
+                    fe_interpolator.reinit(elem);
+                    fe_interpolator.collectDataForInterpolation(elem);
+                    fe_interpolator.interpolate(elem); 
+                    for (unsigned int axis = 0; axis < NDIM; ++axis)
+                    {
+                        X_dof_map_cache.dof_indices(elem, X_dof_indices[axis], axis);
+                    }
+                    get_values_for_interpolation(x_node, *X_ghost_vec, X_dof_indices);
+
+                    double min_x = std::min(x_node[0][0], x_node[1][0]);
+                    double max_x = std::max(x_node[0][0], x_node[1][0]);
+                    double min_y = std::min(x_node[0][1], x_node[1][1]);
+                    double max_y = std::max(x_node[0][1], x_node[1][1]);
+
+                    const libMesh::Point p1(min_x,min_y,0.0); //hard-coded in 2d for EGDE2
+                    const libMesh::Point p2(max_x,max_y,0.0);
+                    const std::pair< libMesh::Point, libMesh::Point > point_pair(p1,p2);
+                    //make a box for the current point...
+                    libMesh::BoundingBox elem_box(point_pair);
+                    //...and stash it in the data structure
+                    d_bounding_boxes[part][elem_num] = elem_box; 
+                    elem_num++;
+                }
+                //At the end of each part, we will create an rtree
+                //to be used later
+                /*std::cout<< "Length of d_bounding_boxes for part "<<part<< " is "<< d_bounding_boxes[part].size()<<"\n";
+                for (const auto& bbox : d_bounding_boxes[part]) {
+                    std::cout << "Bounding Box: " << bbox.min()<<", and "<<bbox.max() << std::endl; // or any other debug info
+                }*/
+                d_rtrees[part] = std::make_unique<RTreeType>(IBTK::pack_rtree_of_indices(d_bounding_boxes[part]));
+            }
+        }
+    }
+        
+    
+    
     for (unsigned int part = 0; part < d_num_parts; ++part)
     {
         NumericVector<double>* U_vec = nullptr;
@@ -1369,6 +1443,11 @@ IIMethod::interpolateVelocity(const int u_data_idx,
             for (unsigned int e_idx = 0; e_idx < num_active_patch_elems; ++e_idx)
             {
                 Elem* const elem = patch_elems[e_idx];
+
+
+
+
+
                 for (unsigned int d = 0; d < NDIM; ++d)
                 {
                     X_dof_map_cache.dof_indices(elem, X_dof_indices[d], d);
@@ -1654,7 +1733,12 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                         std::array<std::array<double, 8>, NDIM> weights_secondary = {}; //4 is hardcoded for 2d (number of corners in box), should be 8 in 3d
 
 #endif
-                      
+
+                        if(d_use_second_velocity_correction){
+
+                        }
+
+
                         unsigned int corner_number = 0;
                         //iterate over all indices in the cell
                         for (BoxIterator<NDIM> b(stencil_box); b; b++)
@@ -1667,8 +1751,26 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                 // check other part
                                 bool found_cut_already = false;
 
+
                                 for (unsigned int part_second = 0; part_second < d_num_parts; ++part_second){
-                                    if(part_second !=part){
+
+                                    if(part_second != part){
+
+                                        //Query the rtree to find which other bounding boxes for elements in other parts
+                                        //intersect the current quadrature point, for reference configuration ONLY
+                                        //double dx_patch = patch_dx;
+                                        namespace bgi = boost::geometry::index;
+                                        const libMesh::Point lib_x_upper(x[0]+1.5*dx[0],x[1]+1.5*dx[0],0.0); //hard-coded in 2d
+                                        const libMesh::Point lib_x_lower(x[0]-1.5*dx[0],x[1]-1.5*dx[0],0.0);
+                                        const std::pair< libMesh::Point, libMesh::Point > point_pair(lib_x_lower,lib_x_upper);
+                                        //make a box for the current point
+                                        libMesh::BoundingBox lib_x_box(point_pair);
+
+                                        std::vector<std::size_t> found_elem_list; //indices of elements found
+
+                                        //populate the list of elements found on the current part that are nearby the current element
+                                        (d_rtrees[part_second])->query(bgi::intersects(lib_x_box),std::back_inserter(found_elem_list));
+
 
                                         // Extract the mesh.
                                         EquationSystems* equation_systems_second = d_fe_data_managers[part_second]->getEquationSystems();
@@ -1696,9 +1798,9 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                         const std::array<PetscVector<double>*, NDIM> DU_second_jump_ghost_vec = {
                                         d_use_velocity_jump_conditions ? d_DU_jump_IB_ghost_vecs[part_second][0] : nullptr,
                                         d_use_velocity_jump_conditions ? d_DU_jump_IB_ghost_vecs[part_second][1] : nullptr,
-#if (NDIM == 3)
+                                        #if (NDIM == 3)
                                         d_use_velocity_jump_conditions ? d_DU_jump_IB_ghost_vecs[part_second][2] : nullptr,
-#endif
+                                        #endif
                                         };
 
                                         std::array<System*, NDIM> DU_second_jump_system;
@@ -1717,24 +1819,11 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                             }
                                         }
 
+                                        //loop over elements, not patches, since thats what we have a list of.
+/*
                                         Pointer<PatchLevel<NDIM> > level_secondary =
                                             d_hierarchy->getPatchLevel(d_fe_data_managers[part_second]->getFinestPatchLevelNumber());
                                         int local_patch_num_secondary = 0;
-                                        //std::cout << "axis = "<<axis<<"\n";
-                                        //std::cout << "made it to right outside the patch loop\n";
-                                        //get active patch OLD CODE:
-
-
-for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_secondary){
-                                            //std::cout << "made it to right inside the patch loop\n";
-                                            const std::vector<Elem*>& patch_elems_secondary =
-                                                d_fe_data_managers[part_second]->getActivePatchElementMap()[local_patch_num_secondary];
-
-
-
-
-                                        //Actually, let's grab the local patch that we are currently are on for the
-                                        //1 cut element. Then only search over that one patch, on every other interface part.
 
                                         for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_secondary){
                                             //std::cout << "made it to right inside the patch loop\n";
@@ -1742,14 +1831,20 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
                                                 d_fe_data_managers[part_second]->getActivePatchElementMap()[local_patch_num_secondary]; //gets a list of elems in the 1 cut patch on part#2
                                             const size_t num_active_patch_elems_secondary = patch_elems_secondary.size();
                                             if (!num_active_patch_elems_secondary) continue;
-                                            
+*/
                                             //get the other part's elem
-                                            for (unsigned int e_idx = 0; e_idx < num_active_patch_elems_secondary; ++e_idx){
+                                            //for (unsigned int e_idx = 0; e_idx < num_active_patch_elems_secondary; ++e_idx){
+                                            for (const auto& elem_n : found_elem_list){
                                                 //std::cout << "made it to right inside the elem loop loop\n";
-                                                bool has_second_cut = false; //initialized to second cut check to false
+                                                bool has_second_cut = false; //initialized second cut check to false
                                                 
                                                 if(!found_cut_already){ //for efficiency
-                                                    Elem* const elem_secondary = patch_elems_secondary[e_idx];
+
+                                                    //should probably assert whether we are using the reference or current config here 
+
+
+
+                                                    Elem* elem_secondary = const_cast<Elem*>(mesh_second.query_elem_ptr(elem_n));  //patch_elems_secondary[e_idx];
                                                     const unsigned int n_nodes_secondary = elem_secondary->n_nodes();
 
                                                     //if we want to use the current configuration, we need to temporarily 
@@ -1805,19 +1900,19 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
                                                         cartesian_corner(d) = x_lower_axis[d] + ((ic[d] - ilower[d]) + 0.5) * dx[d];
                                                         q(d) = cartesian_corner(d) - r(d); //vector from qp to current box corner
                                                     }
-                                                    if(k == 0 && e_idx == 0){
+                                                    //if(k == 0 && e_idx == 0){
                                                         //std::cout <<"for axis = "<<axis<<", r is "<<r<<"cart corner is: "<<cartesian_corner<<" and q is "<<q<<"\n";
                                                     //need to check these for axis = 1, seemingly not finding intersections or anything
-                                                    }
+                                                   // }
                                                     static const double tolerance = sqrt(std::numeric_limits<double>::epsilon());
                                                     std::vector<std::pair<double, libMesh::Point> > intersections; 
                                                         
-#if (NDIM == 2)
+                                                    #if (NDIM == 2)
                                                     has_second_cut = intersect_line_with_edge_non_coordinate(intersections, static_cast<Edge*>(elem_secondary), r, q, tolerance);
-#endif
-#if (NDIM == 3)
+                                                    #endif
+                                                    #if (NDIM == 3)
                                                     has_second_cut = intersect_line_with_face(intersections, static_cast<Face*>(elem_secondary), r, q, tolerance);
-#endif 
+                                                    #endif 
                                                     if(has_second_cut){
 
                                                         found_cut_already = true; //tells us to stop looking for more cuts
@@ -1838,21 +1933,21 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
                                                         //note this is only for 2d at the moment
                                                         const libMesh::Point& p0 = *elem_secondary->node_ptr(0);
                                                         const libMesh::Point& p1 = *elem_secondary->node_ptr(1);
-#if (NDIM == 3)
+                                                        #if (NDIM == 3)
                                                         const libMesh::Point& p2 = *elem_secondary->node_ptr(2);
-#endif
+                                                        #endif
                                                         libMesh::Point cut_location(0,0,0);
-#if (NDIM == 2)
+                                                        #if (NDIM == 2)
                                                         for (unsigned int d = 0; d < NDIM; ++d){
                                                             cut_location(d) = 0.5 * (1 - u_param(0)) * p0(d) + 0.5 * (1+u_param(0)) * p1(d);
                                                         }
-#endif   
+                                                        #endif   
 
-#if (NDIM == 3)
+                                                        #if (NDIM == 3)
                                                         for (unsigned int d = 0; d < NDIM; ++d){
                                                             cut_location(d) = (1 - u_param(0) - u_param(1)) * p0(d) + (u_param(0)) * p1(d) + u_param(1) * p2(d);
                                                         }
-#endif
+                                                        #endif
 
                                                         for (unsigned int d = 0; d < NDIM; ++d){
                                                             dist_cut_to_corner(d) = std::abs(cartesian_corner(d) - cut_location(d)); //vector from qp to current box corner, all positive values
@@ -1862,20 +1957,20 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
                                                             const auto& DU_second_jump_dof_indices = DU_second_jump_dof_map_cache[axis]->dof_indices(elem_secondary);
                                                             get_values_for_interpolation(DU_second_jump_node[axis], *DU_second_jump_ghost_vec[axis], DU_second_jump_dof_indices);
                                                         //}
-#if (NDIM == 2)
+                                                        #if (NDIM == 2)
                                                         for (unsigned int d = 0; d < NDIM; ++d)
                                                         {   
                                                             DU_jump_second_cut[d][corner_number] = 0.5*(1 - u_param(0))* DU_second_jump_node[axis][0][d] +  0.5*(1 + u_param(0))* DU_second_jump_node[axis][1][d];
                                                         }
-#endif
+                                                        #endif
 
-#if (NDIM == 3)
+                                                        #if (NDIM == 3)
                                                         for (unsigned int d = 0; d < NDIM; ++d)
                                                         {   
                                                             DU_jump_second_cut[d][corner_number] = (1 - u_param(0) - u_param(1)) * DU_second_jump_node[axis][0][d] + (u_param(0)) * DU_second_jump_node[axis][1][d] + u_param(1) * DU_second_jump_node[axis][2][d];
                                                             
                                                         }
-#endif
+                                                        #endif
 
 
 
@@ -1905,7 +2000,7 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
 
                                                         VectorValue<double> correction_sign; 
                                                         for (unsigned int i = 0; i < NDIM; i++){
-                                                            correction_sign(i) = -n_secondary(i) * (norm_vec(i)  * q(i));
+                                                            correction_sign(i) = -n_secondary(i) * (norm_vec(i)  * q(i)) * (-n_secondary(i) * norm_vec(i));
                                                         }                                                      
 
                                                         for (unsigned int i = 0; i < NDIM; i++){
@@ -1946,7 +2041,7 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
                                                     }
                                                 }   
                                             }
-                                        //}
+                                       // }
                                     }
                                 }
                             }
@@ -1989,7 +2084,7 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
                                     }
                                     //std::cout<<"handfilled du_jump for 1st cut is:" << du_jump<<"\n\n";
                                 }
-#if (NDIM == 2)
+                                #if (NDIM == 2)
                                 // Use velocity correction term from
                                 // https://epubs.siam.org/doi/abs/10.1137/080712970
                                 Ujump[ic[0]][ic[1]][d] =
@@ -2002,16 +2097,16 @@ for (PatchLevel<NDIM>::Iterator p(level_secondary); p; p++, ++local_patch_num_se
                                           //  "at corner number: "<<corner_number<<"\n";
                                     }
                                 }
-#endif
+                                #endif
 
-#if (NDIM == 3)
+                                #if (NDIM == 3)
 
                                 // Use velocity correction term from
                                 // https://epubs.siam.org/doi/abs/10.1137/080712970
                                 Ujump[ic[0]][ic[1]][ic[2]][d] = dx[0] * w[0][ic[0] - ic_lower[0]] *
                                                                 w[1][ic[1] - ic_lower[1]] * w[2][ic[2] - ic_lower[2]] *
                                                                 (wrc * du_jump);
-#endif
+                                #endif
                                 corner_number +=1;
                             }
                         }
@@ -3847,7 +3942,7 @@ IIMethod::initializeFEEquationSystems()
             equation_systems->get_system(COORDS_SYSTEM_NAME).add_vector("INITIAL_COORDINATES", /*projections*/ true, GHOSTED);
 
             // scalar FE systems:
-            if (d_use_pressure_jump_conditions)
+            if(true)//(d_use_pressure_jump_conditions)
             {
                 System& P_jump_system = equation_systems->add_system<System>(PRESSURE_JUMP_SYSTEM_NAME);
                 System& P_in_system = equation_systems->add_system<System>(PRESSURE_IN_SYSTEM_NAME);
@@ -5050,6 +5145,9 @@ IIMethod::commonConstructor(const std::string& object_name,
     d_normalize_pressure_jump.resize(d_num_parts);
     d_use_discon_elem_for_jumps.resize(d_num_parts);
 
+    d_bounding_boxes.resize(d_num_parts);
+
+
     // Determine whether we should use first-order or second-order shape
     // functions for each part of the structure.
     for (unsigned int part = 0; part < d_num_parts; ++part)
@@ -5059,16 +5157,40 @@ IIMethod::commonConstructor(const std::string& object_name,
         d_current_nodal_normals.emplace_back(mesh.n_nodes(), 3);
         d_weights.emplace_back(mesh.n_nodes(), mesh.n_elem());
         d_elem_normals.emplace_back(mesh.n_elem(), 3);
+
+        
         bool mesh_has_first_order_elems = false;
         bool mesh_has_second_order_elems = false;
         auto el_it = mesh.elements_begin();
         const auto el_end = mesh.elements_end();
+
+        
+        (d_bounding_boxes[part]).resize(mesh.n_elem());
+        int elem_num = 0;
         for (; el_it != el_end; ++el_it)
         {
             auto elem = *el_it;
             mesh_has_first_order_elems = mesh_has_first_order_elems || elem->default_order() == FIRST;
             mesh_has_second_order_elems = mesh_has_second_order_elems || elem->default_order() == SECOND;
+
+            d_bounding_boxes[part][elem_num] = ((elem)->loose_bounding_box());
+            elem_num++;
         }
+        
+        //setup bounding boxes in the initial configuration
+        //this is not updated if !d_use_current_mesh_configuration
+        //std::vector<std::vector<libMesh::BoundingBox>> d_bounding_boxes(d_num_parts, ); 
+        //using RTreeType = decltype(IBTK::pack_rtree_of_indices(d_bounding_boxes[0]));
+        //std::vector<std::unique_ptr<RTreeType>> d_rtrees;
+
+        //for (auto el_it = mesh.elements_begin(); el_it != el_end; ++el_it ){
+        //    d_bounding_boxes[part].emplace_back((*el_it)->loose_bounding_box());
+        //}
+        d_rtrees.emplace_back( std::make_unique<RTreeType>(IBTK::pack_rtree_of_indices(d_bounding_boxes[part])));
+        
+    
+
+
         mesh_has_first_order_elems = SAMRAI_MPI::maxReduction(mesh_has_first_order_elems);
         mesh_has_second_order_elems = SAMRAI_MPI::maxReduction(mesh_has_second_order_elems);
         if ((mesh_has_first_order_elems && mesh_has_second_order_elems) ||

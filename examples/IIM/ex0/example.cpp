@@ -67,8 +67,8 @@ struct TetherData
     {
     }
 };
-
 bool compute_fluid_traction = false;
+
 
 // Tether (penalty) stress function.
 void
