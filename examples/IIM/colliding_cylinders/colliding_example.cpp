@@ -100,6 +100,8 @@ static double upper_drift_velocity = 0;
 static double lower_drift_velocity = -0;
 static bool velo_jcs = true;
 static double theta_rot = 0;
+static double dt = 0.0;
+static bool need_kappa_increase = false;
 
 static double separation = 0;
 
@@ -142,6 +144,16 @@ tether_force_function_upper(VectorValue<double>& F,
         */
         
         //std::cout <<"F(d) in upper plate: "<<F(d)<<"\n";
+    }
+    for (unsigned int d = 0; d < NDIM; ++d)
+    {
+        disp += (X[d] - x(d)) * (X[d] - x(d));
+    }
+    disp = sqrt(disp);
+    TBOX_ASSERT(disp < 0.25 * dx);
+
+    if(disp > 0.1 * dx){
+        need_kappa_increase = true;
     }
     //std::cout <<"F(0) in upper plate: "<<F(1)<<", and F(1) in upper plate: "<<F(1)<<"\n";
     //std::cout <<"u[0] in upper plate: "<<u[0]<<", and u[1] in upper plate: "<<u[1]<<"\n";
@@ -192,6 +204,16 @@ tether_force_function_lower(VectorValue<double>& F,
     //std::cout <<"F(0) in lower plate: "<<F(1)<<", and F(1) in lower plate: "<<F(1)<<"\n";
     //std::cout <<"u[0] in lower plate: "<<u[0]<<", and u[1] in lower plate: "<<u[1]<<"\n";
 
+    for (unsigned int d = 0; d < NDIM; ++d)
+    {
+        disp += (X[d] - x(d)) * (X[d] - x(d));
+    }
+    disp = sqrt(disp);
+    TBOX_ASSERT(disp < 0.25 * dx);
+
+    if(disp > 0.1 * dx){
+        need_kappa_increase = true;
+    }
     return;
 } // tether_force_function_lower
 
@@ -324,6 +346,7 @@ main(int argc, char* argv[])
         
         
         const double dx = input_db->getDouble("DX");
+        dt = input_db->getDouble("DT");
         const double ds = input_db->getDouble("MFAC") * dx;
         const double left_end = input_db->getDouble("LEFT_END");
         const double right_end = input_db->getDouble("RIGHT_END");
@@ -670,7 +693,7 @@ main(int argc, char* argv[])
 
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
-        double dt = 0.0;
+        //double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
         {
             iteration_num = time_integrator->getIntegratorStep();
@@ -679,12 +702,19 @@ main(int argc, char* argv[])
             pout << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "At beginning of timestep # " << iteration_num << "\n";
-            pout << "Simulation time is " << loop_time << "\n";
+            pout << "Simulation time is " << loop_time << "\n\n";
 
-            dt = time_integrator->getMaximumTimeStepSize();
+            //dt = time_integrator->getMaximumTimeStepSize();
+            if(need_kappa_increase){
+                kappa_s *= 1.1;
+                dt /= 1.1;
+                pout << "~~~~~Kappa increased to " << kappa_s << "\n";
+                pout << "~~~~~Time step size decreased to " << dt << "\n";
+            }
+            
             time_integrator->advanceHierarchy(dt);
             loop_time += dt;
-
+            need_kappa_increase = false; //set this immediately to avoid extra increases on accident
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";

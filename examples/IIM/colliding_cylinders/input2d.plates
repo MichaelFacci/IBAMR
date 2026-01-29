@@ -1,6 +1,6 @@
 // physical parameters
 Re = 25
-R = 0.05 //circles' radii
+R = 0.005 //circles' radii
 D = 2.0*R 
 RHO = 1.0
 U_MAX = 0.01
@@ -8,10 +8,10 @@ MU  = RHO * U_MAX * D / Re //1/Re //0.5/Re
 
 
 // grid spacing parameters
-L   = 0.5
+L   = 0.05
 MAX_LEVELS = 1                                      // maximum number of levels in locally refined grid
 REF_RATIO  = 2                                      // refinement ratio between levels
-N = 32                                      // actual    number of grid cells on coarsest grid level
+N = 64                                      // actual    number of grid cells on coarsest grid level
 NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N            // effective number of grid cells on finest   grid level
 DX0 = L/N                                           // mesh width on coarsest grid level
 DX  = L/NFINEST                                     // mesh width on finest   grid level
@@ -23,8 +23,8 @@ elem_order = "FIRST"
 LEFT_END          = -L/2   //left endpoint of parallel plate
 RIGHT_END         = L/2   //right endpoint of parallel plate
 SEPARATION        = 1.0/24.0 //2.0    //distance between plates
-UPPER_DRIFT_VELOCITY    = -0.01    //velocity of upper plate
-LOWER_DRIFT_VELOCITY    = 0.01   //velocity of upper plate
+UPPER_DRIFT_VELOCITY    = -0.001    //velocity of upper plate
+LOWER_DRIFT_VELOCITY    = 0.001   //velocity of upper plate
 PK1_DEV_QUAD_ORDER = "SEVENTH"
 PK1_DIL_QUAD_ORDER = "FIFTH"
 USE_BOUNDARY_MESH = TRUE
@@ -51,10 +51,10 @@ CONVECTIVE_OP_TYPE         = "STABILIZED_PPM"                  // convective dif
 CONVECTIVE_FORM            = "ADVECTIVE"            // how to compute the convective terms
 NORMALIZE_PRESSURE         = FALSE                 // whether to explicitly force the pressure to have mean zero
 CFL_MAX                    = 0.1                   // maximum CFL number
-DT                         = 0.005*CFL_MAX*DX // maximum timestep size
+DT                         = 0.1*CFL_MAX*DX // maximum timestep size
 COMPUTE_FLUID_TRACTION     = FALSE
 END_TIME                   = 1.5              // final simulation time
-ERROR_ON_DT_CHANGE         = TRUE                   // whether to emit an error message if the time step size changes
+ERROR_ON_DT_CHANGE         = FALSE                   // whether to emit an error message if the time step size changes
 VORTICITY_TAGGING          = TRUE                   // whether to tag cells for refinement based on vorticity thresholds
 TAG_BUFFER                 = 1                      // size of tag buffer used by grid generation algorithm
 REGRID_CFL_INTERVAL        = 0.5                    // regrid whenever any material point could have moved 0.5 meshwidths since previous regrid
@@ -66,13 +66,16 @@ OUTPUT_DIV_U               = TRUE
 ENABLE_LOGGING             = TRUE
 
 C_K = 12.0
-KAPPA_S = 1.9e5//C_K * (2.0 * N / 16.0)^2 //0.00002/DT^2  //0.0005/DT^2 //10000 //0.00001*DX/DT^2 //2.5*DX/DT^2
+KAPPA_S = 1.9e1//C_K * (2.0 * N / 16.0)^2 //0.00002/DT^2  //0.0005/DT^2 //10000 //0.00001*DX/DT^2 //2.5*DX/DT^2
 ETA_S = 0.0
 
+SCALE_KAPPA_FACTOR = 1.5
+SCALE_DT_FACTOR = 1.5
+CARE_ABOUT_DISP = FALSE
 
 USE_CIRCLE = TRUE
 USE_TANH_VELOCITY = FALSE
-USE_SECOND_VELOCITY_CORRECTION = FALSE
+USE_SECOND_VELOCITY_CORRECTION = TRUE
 STARTING_DISPLACEMENT = LOWER_DRIFT_VELOCITY * 1  //displacement of each circle relative to the origin, set this to DX if using tanh velocity
 USE_CURR_MESH_CONFIG = TRUE //actually moving the thing, needs to be current config
 

@@ -162,6 +162,7 @@ const std::string IIMethod::COORDS_SYSTEM_NAME = "coordinates system";
 const std::string IIMethod::COORD_MAPPING_SYSTEM_NAME = "coordinate mapping system";
 const std::string IIMethod::FORCE_SYSTEM_NAME = "IB force system";
 const std::string IIMethod::VELOCITY_SYSTEM_NAME = "velocity system";
+const std::string IIMethod::SMOOTHED_NORMAL_SYSTEM_NAME = "smoothed normal system";
 const std::string IIMethod::NORMAL_VELOCITY_SYSTEM_NAME = "normal velocity system";
 const std::string IIMethod::TANGENTIAL_VELOCITY_SYSTEM_NAME = "tangential velocity system";
 const std::string IIMethod::PRESSURE_JUMP_SYSTEM_NAME = "[[p]] system";
@@ -775,6 +776,10 @@ IIMethod::preprocessIntegrateData(double current_time, double new_time, int /*nu
     d_F_half_vecs.resize(d_num_parts);
     d_F_IB_ghost_vecs.resize(d_num_parts);
 
+            d_smoothed_normal_systems.resize(d_num_parts);
+    d_smoothed_normal.resize(d_num_parts);
+    d_smoothed_normal_ghost.resize(d_num_parts);
+
     d_P_jump_systems.resize(d_num_parts);
     d_P_jump_half_vecs.resize(d_num_parts);
     d_P_jump_IB_ghost_vecs.resize(d_num_parts);
@@ -845,6 +850,12 @@ IIMethod::preprocessIntegrateData(double current_time, double new_time, int /*nu
         d_F_half_vecs[part] = dynamic_cast<PetscVector<double>*>(d_F_systems[part]->current_local_solution.get());
         d_F_IB_ghost_vecs[part] = dynamic_cast<PetscVector<double>*>(
             d_fe_data_managers[part]->buildGhostedSolutionVector(FORCE_SYSTEM_NAME, /*localize_data*/ false));
+
+                      d_smoothed_normal_systems[part] = &d_equation_systems[part]->get_system(SMOOTHED_NORMAL_SYSTEM_NAME);
+        d_smoothed_normal[part] =
+            dynamic_cast<PetscVector<double>*>(d_smoothed_normal_systems[part]->current_local_solution.get());
+        d_smoothed_normal_ghost[part] = dynamic_cast<PetscVector<double>*>(
+            d_fe_data_managers[part]->buildGhostedSolutionVector(SMOOTHED_NORMAL_SYSTEM_NAME, /*localize_data*/ false));
 
         if (d_use_pressure_jump_conditions)
         {
@@ -926,6 +937,7 @@ IIMethod::preprocessIntegrateData(double current_time, double new_time, int /*nu
         *d_U_t_half_vecs[part] = *d_U_t_current_vecs[part];
 
         *d_F_half_vecs[part] = *d_F_systems[part]->solution;
+        *d_smoothed_normal[part] = *d_smoothed_normal_systems[part]->solution;
 
         if (d_use_pressure_jump_conditions)
         {
@@ -959,7 +971,7 @@ IIMethod::postprocessIntegrateData(double /*current_time*/, double /*new_time*/,
 {
     IBAMR_TIMER_START(t_postprocess_integrate_data);
     std::vector<std::vector<libMesh::PetscVector<double>*> > vec_collection_update = {
-        d_U_new_vecs, d_X_new_vecs, d_U_n_new_vecs, d_U_t_new_vecs, d_F_half_vecs
+        d_U_new_vecs, d_X_new_vecs, d_U_n_new_vecs, d_U_t_new_vecs, d_smoothed_normal, d_F_half_vecs
     };
 
     if (d_use_pressure_jump_conditions)
@@ -1015,6 +1027,10 @@ IIMethod::postprocessIntegrateData(double /*current_time*/, double /*new_time*/,
 
         *d_F_systems[part]->solution = *d_F_half_vecs[part];
         *d_F_systems[part]->current_local_solution = *d_F_half_vecs[part];
+
+        *d_smoothed_normal_systems[part]->solution = *d_smoothed_normal[part];
+        *d_smoothed_normal_systems[part]->current_local_solution = *d_smoothed_normal[part];
+        
 
         if (d_use_pressure_jump_conditions)
         {
@@ -1074,6 +1090,9 @@ IIMethod::postprocessIntegrateData(double /*current_time*/, double /*new_time*/,
     d_F_systems.clear();
     d_F_half_vecs.clear();
     d_F_IB_ghost_vecs.clear();
+    d_smoothed_normal_systems.clear();
+    d_smoothed_normal.clear();
+    d_smoothed_normal_ghost.clear();
 
     d_P_jump_systems.clear();
     d_P_jump_half_vecs.clear();
@@ -1754,10 +1773,10 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
                                 for (unsigned int part_second = 0; part_second < d_num_parts; ++part_second){
 
-                                    if(part_second != part){
+                                    //if(part_second != part){ //maybe remove this to check nearby elems (but not the elem we are on)
 
                                         //Query the rtree to find which other bounding boxes for elements in other parts
-                                        //intersect the current quadrature point, for reference configuration ONLY
+                                        //intersect the current quadrature point's bbox, for reference configuration ONLY
                                         //double dx_patch = patch_dx;
                                         namespace bgi = boost::geometry::index;
                                         const libMesh::Point lib_x_upper(x[0]+1.5*dx[0],x[1]+1.5*dx[0],0.0); //hard-coded in 2d
@@ -1843,8 +1862,18 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                                     //should probably assert whether we are using the reference or current config here 
 
 
-
                                                     Elem* elem_secondary = const_cast<Elem*>(mesh_second.query_elem_ptr(elem_n));  //patch_elems_secondary[e_idx];
+
+                                                    // Use libMesh's contains_point to check if the qp is on this element
+                                                    libMesh::Point x_libmesh;
+                                                    for (unsigned int d = 0; d < NDIM; ++d) {
+                                                        x_libmesh(d) = x[d];
+                                                    }
+                                                    if (elem_secondary->contains_point(x_libmesh)) {
+                                                        //std::cout <<"On part number "<<part<<", continuing after finding same elem:"<<elem_n<<"\n";
+                                                        continue;
+                                                    }
+
                                                     const unsigned int n_nodes_secondary = elem_secondary->n_nodes();
 
                                                     //if we want to use the current configuration, we need to temporarily 
@@ -1898,6 +1927,21 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                                     for (unsigned int d = 0; d < NDIM; ++d){
                                                         r(d) = x_qp[s * NDIM + d]; //current quadrature pt location
                                                         cartesian_corner(d) = x_lower_axis[d] + ((ic[d] - ilower[d]) + 0.5) * dx[d];
+                                                    }
+
+                                                    //Perturb the r(d) if it is grid aligned (was having trouble in anvil block test without this)
+                                                    /*
+                                                    for (unsigned int d = 0; d < NDIM; ++d) {
+                                                        const double tol = 1.0e-7 * dx[d]; 
+                                                        // If r is effectively on a grid line or half-grid line
+                                                        double grid_pos = (r(d) - x_lower_axis[d]) / dx[d];
+                                                        if (std::abs(grid_pos - std::round(grid_pos)) < 1e-6) {
+                                                            r(d) += tol; 
+                                                        }
+                                                    }*/
+
+                                                    // now we can compute the ray from qp to corner
+                                                    for (unsigned int d = 0; d < NDIM; ++d){
                                                         q(d) = cartesian_corner(d) - r(d); //vector from qp to current box corner
                                                     }
                                                     //if(k == 0 && e_idx == 0){
@@ -1915,9 +1959,9 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                                     #endif 
                                                     if(has_second_cut){
 
-                                                        found_cut_already = true; //tells us to stop looking for more cuts
-                                                        //if(k == 0 && e_idx == 0){std::cout<< "cut found on elem "<<e_idx<<"\n";}
                                                         
+                                                        //if(k == 0 && e_idx == 0){std::cout<< "cut found on elem "<<e_idx<<"\n";}
+                                                        //std::cout<< "second cut found on part "<<part_second<<" elem "<<elem_n<<"\n";
                                                         for (unsigned int k = 0; k < NDIM - 1; ++k)
                                                         {
                                                             interpolate(dx_dxi_second[k], 0, x_node_second, *dphi_dxi_second[k]);
@@ -1928,7 +1972,19 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                                         }
                                                         n_secondary = (dx_dxi_second[0].cross(dx_dxi_second[1])).unit();
                                                         n_secondary = n_secondary.unit();
+
+                                                        double alignment = norm_vec * n_secondary;
+                                                        //std::cout <<"The alignment n1*n2 = "<<alignment<<"\n";
+
+                                                        
+                                                        if(part == part_second && alignment >= 0.98){
+                                                            found_cut_already = false;
+                                                            continue;
+                                                        }
+                                                        
+                                                        found_cut_already = true; //tells us to stop looking for more cuts, have found one alr
                                                         libMesh::Point u_param = intersections[0].second;
+                                                       
 
                                                         //note this is only for 2d at the moment
                                                         const libMesh::Point& p0 = *elem_secondary->node_ptr(0);
@@ -1948,6 +2004,8 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                                             cut_location(d) = (1 - u_param(0) - u_param(1)) * p0(d) + (u_param(0)) * p1(d) + u_param(1) * p2(d);
                                                         }
                                                         #endif
+
+                                                        //std::cout << "For quadrature point at "<<r<<", second cut found at: "<<cut_location<<"On second elem:"<<elem_n<<"\n";
 
                                                         for (unsigned int d = 0; d < NDIM; ++d){
                                                             dist_cut_to_corner(d) = std::abs(cartesian_corner(d) - cut_location(d)); //vector from qp to current box corner, all positive values
@@ -2000,7 +2058,21 @@ IIMethod::interpolateVelocity(const int u_data_idx,
 
                                                         VectorValue<double> correction_sign; 
                                                         for (unsigned int i = 0; i < NDIM; i++){
-                                                            correction_sign(i) = -n_secondary(i) * (norm_vec(i)  * q(i)) * (-n_secondary(i) * norm_vec(i));
+
+                                                            if(norm_vec(i)*n_secondary(i) > 0){
+                                                                correction_sign(i) = -n_secondary(i);
+                                                            }
+                                                            else if(q(i) * n_secondary(i) < 0) {
+                                                                correction_sign(i) = q(i);
+                                                            }
+                                                            else if(q(i) * n_secondary(i) > 0){
+                                                                correction_sign(i) = -q(i);
+                                                            }
+
+
+                                                            //correction_sign(i) = -q(i) * (n_secondary(i)); //-n_secondary(i) * (norm_vec(i)  * q(i)) * (-n_secondary(i) * norm_vec(i)); //should just be q(i)
+                                                        //I think this accounts for the self-cutting case and also if the the normals
+                                                        // of the two surfaces are pointing in the same direction
                                                         }                                                      
 
                                                         for (unsigned int i = 0; i < NDIM; i++){
@@ -2042,7 +2114,7 @@ IIMethod::interpolateVelocity(const int u_data_idx,
                                                 }   
                                             }
                                        // }
-                                    }
+                                    //} //removed this because we do want to check current interface (specifically for sharp corners)
                                 }
                             }
                             for (int j = 0; j < NDIM; ++j) wrc(j) = wr[j][ic_upper[j] - ic[j]];
@@ -3341,6 +3413,8 @@ IIMethod::computeLagrangianForce(const double data_time)
         // Setup global and elemental right-hand-side vectors.
         NumericVector<double>* F_vec = d_F_half_vecs[part];
         std::unique_ptr<NumericVector<double> > F_rhs_vec = F_vec->zero_clone();
+        NumericVector<double>* Normal_vec = d_smoothed_normal[part];
+        std::unique_ptr<NumericVector<double> > Normal_rhs_vec = Normal_vec->zero_clone();
         std::array<DenseVector<double>, NDIM> F_rhs_e;
         VectorValue<double>& F_integral = d_lag_surface_force_integral[part];
         F_integral.zero();
@@ -3379,6 +3453,14 @@ IIMethod::computeLagrangianForce(const double data_time)
         {
             TBOX_ASSERT(F_dof_map.variable_type(d) == F_fe_type);
         }
+
+        System* smoothed_normal_system = &equation_systems->get_system(SMOOTHED_NORMAL_SYSTEM_NAME);
+        const DofMap* smoothed_normal_dof_map = &smoothed_normal_system->get_dof_map();
+        FEType smoothed_normal_fe_type = smoothed_normal_dof_map->variable_type(0);
+        std::unique_ptr<FEBase> fe_smoothed_normal = FEBase::build(dim, smoothed_normal_fe_type);
+        FEDataManager::SystemDofMapCache& smoothed_normal_dof_map_cache =
+        *d_fe_data_managers[part]->getDofMapCache(SMOOTHED_NORMAL_SYSTEM_NAME);
+        std::array<DenseVector<double>, NDIM> Normal_rhs_e;
 
         System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
         const DofMap& X_dof_map = X_system.get_dof_map();
@@ -3442,6 +3524,11 @@ IIMethod::computeLagrangianForce(const double data_time)
         dphi_dxi_X[0] = &fe_X->get_dphidxi();
         if (NDIM > 2) dphi_dxi_X[1] = &fe_X->get_dphideta();
 
+        std::unique_ptr<FEBase> fe_N = FEBase::build(dim, smoothed_normal_fe_type);
+        fe_N->attach_quadrature_rule(qrule.get());
+                const std::vector<double>& JxW_N = fe_N->get_JxW();
+        const std::vector<std::vector<double> >& phi_N = fe_N->get_phi();
+
         FEType fe_jump_type = INVALID_FE;
         if (d_use_pressure_jump_conditions)
         {
@@ -3472,10 +3559,10 @@ IIMethod::computeLagrangianForce(const double data_time)
             surface_pressure_grad_var_data;
 
         // Loop over the elements to compute the right-hand side vector.
-        boost::multi_array<double, 2> X_node, x_node;
+        boost::multi_array<double, 2> X_node, x_node, Normal_node, Smoothed_Normal_node;
         double DU[NDIM][NDIM];
         TensorValue<double> FF;
-        VectorValue<double> F, F_b, F_s, F_qp, N, X, n, x;
+        VectorValue<double> F, F_b, F_s, F_qp, N, X, n, x, Normal_qp, normal, Smoothed_Normal;
         std::array<VectorValue<double>, 2> dX_dxi, dx_dxi;
         std::vector<libMesh::dof_id_type> dof_id_scratch;
 
@@ -3488,11 +3575,88 @@ IIMethod::computeLagrangianForce(const double data_time)
 
         const auto el_begin = mesh.active_local_elements_begin();
         const auto el_end = mesh.active_local_elements_end();
+
+                        /////////////////////smoothing normal -- Qi Code /////////////
+        if (d_use_smoothed_normal)
+        {
+            for (auto el_it = el_begin; el_it != el_end; ++el_it)
+            {
+                auto elem = *el_it;
+
+                const auto& Normal_dof_indices =
+                    smoothed_normal_dof_map_cache.dof_indices(elem); // F_dof_map_cache.dof_indices(elem);
+                const auto& X_dof_indices = X_dof_map_cache.dof_indices(elem);
+                
+
+                for (unsigned int d = 0; d < NDIM; ++d)
+                {
+                    Normal_rhs_e[d].resize(static_cast<int>(Normal_dof_indices[d].size()));
+                }
+                fe_X->reinit(elem);
+                fe_N->reinit(elem);
+
+                fe_interpolator.reinit(elem);
+                fe_interpolator.collectDataForInterpolation(elem);
+                fe_interpolator.interpolate(elem);
+
+                get_values_for_interpolation(x_node, *X_vec, X_dof_indices);
+                const unsigned int n_qpoints = qrule->n_points();
+                const size_t n_basis = phi_X.size();
+                const size_t n_basis2 = phi_jump.size();
+                const size_t n_basis3 = phi_N.size();
+
+                for (unsigned int qp = 0; qp < n_qpoints; ++qp)
+                {
+                    interpolate(x, qp, x_node, phi_X);
+                    for (unsigned int k = 0; k < NDIM - 1; ++k)
+                    {
+                        interpolate(dx_dxi[k], qp, x_node, *dphi_dxi_X[k]);
+                    }
+                    if (NDIM == 2)
+                    {
+                        dx_dxi[1] = VectorValue<double>(0.0, 0.0, 1.0);
+                    }
+
+                    n = dx_dxi[0].cross(dx_dxi[1]);
+                    const double da = n.norm();
+
+                    n = n.unit();
+                    // Add the boundary forces to the right-hand-side vector.
+                    for (unsigned int k = 0; k < n_basis3; ++k)
+                    {
+                        Normal_qp = n * phi_N[k][qp] * JxW_N[qp]; // n * phi_X[k][qp] * JxW[qp];
+                        for (unsigned int i = 0; i < NDIM; ++i)
+                        {
+                            Normal_rhs_e[i](k) += Normal_qp(i);
+                        }
+                    }
+                }
+                // Apply constraints (e.g., enforce periodic boundary conditions)
+                // and add the elemental contributions to the global vector.
+
+                for (unsigned int i = 0; i < NDIM; ++i)
+                {
+                    copy_dof_ids_to_vector(i, Normal_dof_indices, dof_id_scratch);
+                    smoothed_normal_dof_map->constrain_element_vector(Normal_rhs_e[i],
+                                                                      dof_id_scratch); // F_dof_map.constrain_element_vector(Normal_rhs_e[i],
+                                                                                       // dof_id_scratch);
+                    Normal_rhs_vec->add_vector(Normal_rhs_e[i], dof_id_scratch);
+                }
+            }
+            // SAMRAI_MPI::sumReduction(&F_integral(0), NDIM);
+            Normal_rhs_vec->close();
+            d_fe_data_managers[part]->computeL2Projection(
+                *Normal_vec, *Normal_rhs_vec, SMOOTHED_NORMAL_SYSTEM_NAME);
+            Normal_vec->close();
+        }
+        
+        ///////////////////////////////////////////////
         for (auto el_it = el_begin; el_it != el_end; ++el_it)
         {
             auto elem = *el_it;
             const auto& F_dof_indices = F_dof_map_cache.dof_indices(elem);
             const auto& X_dof_indices = X_dof_map_cache.dof_indices(elem);
+            const auto& smoothed_normal_dof_indices = smoothed_normal_dof_map_cache.dof_indices(elem);
 
             for (unsigned int d = 0; d < NDIM; ++d)
             {
@@ -3526,6 +3690,10 @@ IIMethod::computeLagrangianForce(const double data_time)
             {
                 fe_jump->reinit(elem);
             }
+            if (d_use_smoothed_normal)
+            {
+                get_values_for_interpolation(Normal_node, *Normal_vec, smoothed_normal_dof_indices);
+            }
 
             get_values_for_interpolation(x_node, *X_vec, X_dof_indices);
             get_values_for_interpolation(X_node, X0_vec, X_dof_indices);
@@ -3543,6 +3711,10 @@ IIMethod::computeLagrangianForce(const double data_time)
                 const double da = n.norm();
                 n = n.unit();
 
+                if (d_use_smoothed_normal)
+                {
+                    interpolate(normal, qp, Normal_node, phi_N);
+                }
                 /*
                 for (unsigned int k = 0; k < NDIM - 1; ++k)
                 {
@@ -3564,6 +3736,11 @@ IIMethod::computeLagrangianForce(const double data_time)
                 const double da = n.norm();
                 n = n.unit();
                 */
+                if (d_use_smoothed_normal)
+                {
+                    n = normal;
+                    n = n.unit();
+                }
                 F.zero();
 
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
@@ -3938,6 +4115,14 @@ IIMethod::initializeFEEquationSystems()
                     system.add_variable(vector_variable_prefixes[i] + "_" + std::to_string(d), d_fe_order[part], vector_fe_family[i]);
                 }
             }
+            const auto smoothed_normal_family = d_use_smoothed_normal ? d_smoothed_normal_fe_family : d_fe_family[part];
+
+            auto& system = equation_systems->add_system<System>(SMOOTHED_NORMAL_SYSTEM_NAME);
+            
+              for (unsigned int d = 0; d < NDIM; ++d)
+            {
+                system.add_variable("N_" + std::to_string(d), d_smoothed_normal_fe_order, smoothed_normal_family);
+            }
 
             equation_systems->get_system(COORDS_SYSTEM_NAME).add_vector("INITIAL_COORDINATES", /*projections*/ true, GHOSTED);
 
@@ -4017,6 +4202,10 @@ IIMethod::initializeFEData()
 
         F_system.assemble_before_solve = false;
         F_system.assemble();
+
+        auto& N_system = equation_systems->get_system<System>(SMOOTHED_NORMAL_SYSTEM_NAME);
+        N_system.assemble_before_solve = false;
+        N_system.assemble();
 
         if (d_use_pressure_jump_conditions)
         {
@@ -5387,6 +5576,16 @@ IIMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     else if (db->isDouble("min_ghost_cell_width"))
     {
         d_ghosts = static_cast<int>(std::ceil(db->getDouble("min_ghost_cell_width")));
+    }
+
+        
+    if (db->isBool("use_smoothed_normal"))
+    {
+       if (db->isString("smoothed_normal_fe_family"))
+            d_smoothed_normal_fe_family = Utility::string_to_enum<FEFamily>(db->getString("smoothed_normal_fe_family"));
+        if (db->isString("smoothed_normal_fe_order"))
+            d_smoothed_normal_fe_order = Utility::string_to_enum<Order>(db->getString("smoothed_normal_fe_order"));
+        d_use_smoothed_normal = db->getBool("use_smoothed_normal");
     }
     if (db->keyExists("do_log"))
         d_do_log = db->getBool("do_log");

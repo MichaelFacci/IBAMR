@@ -14,6 +14,9 @@
 # EXTERNAL cache entries
 ########################
 
+//The directory containing a CMake configuration file for Boost.
+Boost_DIR:PATH=Boost_DIR-NOTFOUND
+
 //Path to a file.
 Boost_INCLUDE_DIR:PATH=/home/mfacci/sfw/linux/boost/1.60.0/include
 
@@ -31,7 +34,7 @@ CMAKE_BUILD_TYPE:STRING=
 CMAKE_COLOR_MAKEFILE:BOOL=ON
 
 //CXX compiler
-CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++
+CMAKE_CXX_COMPILER:STRING=/usr/bin/c++
 
 //A wrapper around 'ar' adding the appropriate '--plugin' option
 // for the GCC compiler
@@ -57,7 +60,7 @@ CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG
 CMAKE_CXX_FLAGS_RELWITHDEBINFO:STRING=-O2 -g -DNDEBUG
 
 //C compiler
-CMAKE_C_COMPILER:FILEPATH=/usr/bin/cc
+CMAKE_C_COMPILER:STRING=/usr/bin/cc
 
 //A wrapper around 'ar' adding the appropriate '--plugin' option
 // for the GCC compiler
@@ -262,6 +265,9 @@ MPI_CXX_ADDITIONAL_INCLUDE_DIRS:STRING=
 //MPI compiler for CXX
 MPI_CXX_COMPILER:FILEPATH=/home/mfacci/sfw/linux/openmpi/4.0.2/bin/mpicxx
 
+//MPI CXX compiler wrapper include directories
+MPI_CXX_COMPILER_INCLUDE_DIRS:STRING=/home/mfacci/sfw/linux/openmpi/4.0.2/include
+
 //MPI CXX compilation definitions
 MPI_CXX_COMPILE_DEFINITIONS:STRING=
 
@@ -286,6 +292,9 @@ MPI_C_ADDITIONAL_INCLUDE_DIRS:STRING=
 //MPI compiler for C
 MPI_C_COMPILER:FILEPATH=/home/mfacci/sfw/linux/openmpi/4.0.2/bin/mpicc
 
+//MPI C compiler wrapper include directories
+MPI_C_COMPILER_INCLUDE_DIRS:STRING=/home/mfacci/sfw/linux/openmpi/4.0.2/include
+
 //MPI C compilation definitions
 MPI_C_COMPILE_DEFINITIONS:STRING=
 
@@ -304,8 +313,17 @@ MPI_C_LINK_FLAGS:STRING=-Wl,-rpath -Wl,/home/mfacci/sfw/linux/openmpi/4.0.2/lib 
 //Location of the mpi library for MPI
 MPI_mpi_LIBRARY:FILEPATH=/home/mfacci/sfw/linux/openmpi/4.0.2/lib/libmpi.so
 
+//Arguments to supply to pkg-config
+PKG_CONFIG_ARGN:STRING=
+
+//pkg-config executable
+PKG_CONFIG_EXECUTABLE:FILEPATH=/usr/bin/pkg-config
+
 //Value Computed by CMake
 mysolver_BINARY_DIR:STATIC=/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentric_rot_cyl
+
+//Value Computed by CMake
+mysolver_IS_TOP_LEVEL:STATIC=ON
 
 //Value Computed by CMake
 mysolver_SOURCE_DIR:STATIC=/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentric_rot_cyl
@@ -315,6 +333,8 @@ mysolver_SOURCE_DIR:STATIC=/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentric_
 # INTERNAL cache entries
 ########################
 
+//ADVANCED property for variable: Boost_DIR
+Boost_DIR-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: Boost_INCLUDE_DIR
 Boost_INCLUDE_DIR-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_ADDR2LINE
@@ -326,9 +346,9 @@ CMAKE_CACHEFILE_DIR:INTERNAL=/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentri
 //Major version of cmake used to create the current loaded cache
 CMAKE_CACHE_MAJOR_VERSION:INTERNAL=3
 //Minor version of cmake used to create the current loaded cache
-CMAKE_CACHE_MINOR_VERSION:INTERNAL=16
+CMAKE_CACHE_MINOR_VERSION:INTERNAL=22
 //Patch version of cmake used to create the current loaded cache
-CMAKE_CACHE_PATCH_VERSION:INTERNAL=3
+CMAKE_CACHE_PATCH_VERSION:INTERNAL=1
 //ADVANCED property for variable: CMAKE_COLOR_MAKEFILE
 CMAKE_COLOR_MAKEFILE-ADVANCED:INTERNAL=1
 //Path to CMake executable.
@@ -429,7 +449,7 @@ CMAKE_RANLIB-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_READELF
 CMAKE_READELF-ADVANCED:INTERNAL=1
 //Path to CMake installation.
-CMAKE_ROOT:INTERNAL=/usr/share/cmake-3.16
+CMAKE_ROOT:INTERNAL=/usr/share/cmake-3.22
 //ADVANCED property for variable: CMAKE_SHARED_LINKER_FLAGS
 CMAKE_SHARED_LINKER_FLAGS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_SHARED_LINKER_FLAGS_DEBUG
@@ -492,6 +512,8 @@ MPIEXEC_PREFLAGS-ADVANCED:INTERNAL=1
 MPI_CXX_ADDITIONAL_INCLUDE_DIRS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: MPI_CXX_COMPILER
 MPI_CXX_COMPILER-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: MPI_CXX_COMPILER_INCLUDE_DIRS
+MPI_CXX_COMPILER_INCLUDE_DIRS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: MPI_CXX_COMPILE_DEFINITIONS
 MPI_CXX_COMPILE_DEFINITIONS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: MPI_CXX_COMPILE_OPTIONS
@@ -508,6 +530,8 @@ MPI_CXX_SKIP_MPICXX-ADVANCED:INTERNAL=1
 MPI_C_ADDITIONAL_INCLUDE_DIRS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: MPI_C_COMPILER
 MPI_C_COMPILER-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: MPI_C_COMPILER_INCLUDE_DIRS
+MPI_C_COMPILER_INCLUDE_DIRS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: MPI_C_COMPILE_DEFINITIONS
 MPI_C_COMPILE_DEFINITIONS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: MPI_C_COMPILE_OPTIONS
@@ -526,6 +550,10 @@ MPI_RESULT_CXX_test_mpi_normal:INTERNAL=TRUE
 MPI_RESULT_C_test_mpi_normal:INTERNAL=TRUE
 //ADVANCED property for variable: MPI_mpi_LIBRARY
 MPI_mpi_LIBRARY-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: PKG_CONFIG_ARGN
+PKG_CONFIG_ARGN-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: PKG_CONFIG_EXECUTABLE
+PKG_CONFIG_EXECUTABLE-ADVANCED:INTERNAL=1
 //Components requested for this build tree.
 _Boost_COMPONENTS_SEARCHED:INTERNAL=
 //Last used Boost_INCLUDE_DIR value.

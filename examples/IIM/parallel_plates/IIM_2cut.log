@@ -1,6 +1,0 @@
-P=00000:Program abort called in file ``../../../../SAMRAI-2.4.4/source/toolbox/base/Utilities.C'' at line 79
-P=00000:ERROR MESSAGE: 
-P=00000:Error in Utilities::recursiveMkdir...
-P=00000:    Cannot create directories in path = IIM_2cut.log
-P=00000:    because some intermediate item in path exists andis NOT a directory
-P=00000:

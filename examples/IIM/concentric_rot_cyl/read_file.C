@@ -3,6 +3,7 @@
 #include <vector>
 #include <cassert>
 #include <fstream>
+#include <filesystem>
 
 int main(int argc, char **argv)
 {   
@@ -27,8 +28,14 @@ int main(int argc, char **argv)
     MPI_File_read(fh, &a[0], size, MPI_DOUBLE, &status);
     MPI_Finalize();
 
-    std::string ascii_filename = "matlab_";
-    ascii_filename += filename; 
+    //std::string ascii_filename = "matlab_";
+    //ascii_filename += filename; 
+
+    std::string input_filename(filename);
+    std::string base_name = std::filesystem::path(input_filename).filename().string();
+    std::string ascii_filename = "pyth_" + base_name;
+
+
     std::ofstream fout(ascii_filename.c_str(), std::ios::out);
     fout.precision(7);
     for (int i = 0; i < size;)

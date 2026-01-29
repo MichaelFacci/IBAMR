@@ -18,7 +18,7 @@ elem_order = "FIRST"
 //parallel plate params
 LEFT_END          = -L/2   //left endpoint of parallel plate
 RIGHT_END         = L/2   //right endpoint of parallel plate
-SEPARATION        = 1.0/24.0 //2.0    //distance between plates
+SEPARATION        = DX/50 //1.0/24.0 //2.0    //distance between plates
 UPPER_DRIFT_VELOCITY    = 0.003125    //velocity of upper plate
 LOWER_DRIFT_VELOCITY    = -0.003125   //velocity of upper plate
 PK1_DEV_QUAD_ORDER = "SEVENTH"
@@ -66,13 +66,15 @@ KAPPA_S = C_K * (2.0 * N / 16.0)^2 //0.00002/DT^2  //0.0005/DT^2 //10000 //0.000
 ETA_S = 0.0
 
 USE_SECOND_VELOCITY_CORRECTION = TRUE
-USE_CURR_MESH_CONFIG = TRUE //actually moving the thing, needs to be current config
+USE_CURR_MESH_CONFIG = FALSE //actually moving the thing, needs to be current config
 
 
 USE_HANDFILLED_JC_FOR_FORCE_SPREADING =  FALSE
 USE_HANDFILLED_JC_FOR_INTERPOLATION =  FALSE
 HANDFILLED_JC = (UPPER_DRIFT_VELOCITY-LOWER_DRIFT_VELOCITY)/SEPARATION
 
+
+//don't forget  -stokes_ksp_rtol 1.0e-10 -ksp_rtol 1.0e-10 on each run
 
 U_INFLOW = "sqrt((X1)*(X1))  <= SEPARATION/2 ? LOWER_DRIFT_VELOCITY + (X1 + SEPARATION/2)*(UPPER_DRIFT_VELOCITY - LOWER_DRIFT_VELOCITY)/SEPARATION : ( (X1 < -SEPARATION/2) ? 0 + (X1 - (-L/2))* (LOWER_DRIFT_VELOCITY - 0)/(-SEPARATION/2 - (-L/2)) : UPPER_DRIFT_VELOCITY + (X1 - SEPARATION/2)*(0 - UPPER_DRIFT_VELOCITY)/(L/2 - SEPARATION/2) )"
 VelocityBcCoefs_0 {

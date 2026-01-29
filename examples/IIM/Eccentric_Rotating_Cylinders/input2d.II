@@ -17,7 +17,7 @@ MFAC = 1.0                                        // ratio of Lagrangian mesh wi
 ELEM_TYPE = "TRI3"                                  // type of element to use for structure discretization
 elem_order = "FIRST"   
 R = 0.75 //0.4
-Ro = 0.75 + DX* 3//*(1.0+1.0/24.0)
+Ro = 0.75 + DX * 3//*(1.0+1.0/24.0)
 B = 0.0
 OMEGA1 = 0.000833  
 OMEGA2 = 0.0
@@ -63,7 +63,7 @@ OUTPUT_OMEGA               = TRUE
 OUTPUT_DIV_U               = TRUE
 ENABLE_LOGGING             = TRUE
 
-e = 0.0 //using this for concentric, too. No reason not to, I guess.
+e = DX //using this for concentric, too. No reason not to, I guess.
 //e = 0.5* (Ro - R) //3.0/128  //0.05 //3.0/128
 
 c = Ro - R

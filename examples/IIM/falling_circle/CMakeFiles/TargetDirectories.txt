@@ -1,4 +1,0 @@
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/falling_circle/CMakeFiles/edit_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/falling_circle/CMakeFiles/rebuild_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/falling_circle/CMakeFiles/main3d.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/falling_circle/CMakeFiles/main2d.dir

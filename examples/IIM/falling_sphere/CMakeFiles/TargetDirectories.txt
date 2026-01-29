@@ -1,3 +1,0 @@
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/falling_sphere/CMakeFiles/edit_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/falling_sphere/CMakeFiles/rebuild_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/falling_sphere/CMakeFiles/main3d.dir

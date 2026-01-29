@@ -1,4 +1,0 @@
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentric_rot_cyl/CMakeFiles/rebuild_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentric_rot_cyl/CMakeFiles/edit_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentric_rot_cyl/CMakeFiles/exe.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/concentric_rot_cyl/CMakeFiles/main2d.dir

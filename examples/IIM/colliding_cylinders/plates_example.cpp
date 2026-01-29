@@ -116,8 +116,62 @@ static double lower_drift_velocity = -0.003125;
 static bool velo_jcs = true;
 static bool use_tanh_velocity = false;
 static double dx = 0;
-static double DT = 0;
+static double dt = 0.0;
 static bool compute_fluid_traction = false;
+static bool need_kappa_increase = false;
+static double scale_kappa_factor = 1.1;
+static double scale_dt_factor = 1.1;
+static bool care_about_disp = false;
+static ofstream max_disp_stream;
+
+
+//Michael Facci code
+void
+postprocess_displacement_data(MeshBase &mesh, System &dX_system)
+{
+    double max_displacement = 0.0;
+
+    NumericVector<double> &dX_vec = *dX_system.solution.get();
+    NumericVector<double> &dX_ghost_vec = *dX_system.current_local_solution.get();
+    copy_and_synch(dX_vec, dX_ghost_vec);
+    DofMap &dX_dof_map = dX_system.get_dof_map();
+    std::vector<std::vector<dof_id_type> > dX_dof_indices(NDIM);
+    boost::multi_array<double, 2> dX_node;
+
+    const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
+    const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
+    for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+    {
+        const Elem* const elem = *el_it;
+
+        
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            dX_dof_map.dof_indices(elem, dX_dof_indices[d], d);
+        }
+
+
+        const int n_basis = static_cast<int>(dX_dof_indices[0].size());
+        get_values_for_interpolation(dX_node, dX_ghost_vec, dX_dof_indices);
+        for (int k = 0; k < n_basis; ++k)
+        {   
+	    double current_distance =0.0;
+            for (int d = 0; d < NDIM; ++d)
+            {
+ 		current_distance +=std::abs(dX_node[k][d]);  
+            }
+	    max_displacement = std::max(max_displacement,current_distance);
+
+        }
+    }
+
+    SAMRAI_MPI::maxReduction(&max_displacement, 1);
+    plog <<"" << max_displacement << std::endl;
+    if (SAMRAI_MPI::getRank()==0){
+        max_disp_stream<< "" <<max_displacement<<std::endl;
+    }
+} 
+
 void
 tether_force_function_upper(VectorValue<double>& F,
                       const VectorValue<double>& n,
@@ -158,7 +212,19 @@ tether_force_function_upper(VectorValue<double>& F,
         F(0) = kappa_s * (x_new - x(0)) + eta_s * (upper_drift_velocity - u[0]);
         F(1) = kappa_s * (X(1) - x(1)) - eta_s * u[1];
     }
+    double disp = 0.0;
 
+    disp += (x_new - x(0)) * (x_new - x(0));
+    //disp += (X(1) - x(1)) * (X(1) - x(1));
+
+    disp = sqrt(disp);
+    if(care_about_disp){
+        TBOX_ASSERT(disp < 0.5 * dx);
+
+        if(disp > 0.25 * dx){
+            need_kappa_increase = true;
+        }
+    }
 
 
     //std::cout <<"F(0) in upper plate: "<<F(1)<<", and F(1) in upper plate: "<<F(1)<<"\n";
@@ -207,7 +273,20 @@ tether_force_function_lower(VectorValue<double>& F,
         F(0) = kappa_s * (x_new - x(0)) + eta_s * (lower_drift_velocity - u[0]);
         F(1) = kappa_s * (X(1) - x(1)) - eta_s * u[1];
     }
+    double disp = 0.0;
+
+    disp += (x_new - x(0)) * (x_new - x(0));
+    //disp += (X(1) - x(1)) * (X(1) - x(1));
     
+    disp = sqrt(disp);
+    if(care_about_disp){
+        TBOX_ASSERT(disp < 0.5 * dx);
+
+        if(disp > 0.25 * dx){
+            need_kappa_increase = true;
+        }
+    }
+
 		//F(d) = kappa_s * (X(d) - x(d));
         //std::cout <<"F(d) in lower plate: "<<F(d)<<"\n";
 		// + eta_s * (0.0 - U[d]);
@@ -270,6 +349,7 @@ void postprocess_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                  const int iteration_num,
                  const double loop_time,
                  const string& data_dump_dirname);
+                 
 void postprocess_force_data(Pointer<Database> input_db,
                     Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                     Pointer<INSHierarchyIntegrator> navier_stokes_integrator,
@@ -344,7 +424,7 @@ main(int argc, char* argv[])
         
         
         dx = input_db->getDouble("DX");
-        DT = input_db->getDouble("DT");
+        dt = input_db->getDouble("DT");
         const double ds = input_db->getDouble("MFAC") * dx;
         const double left_end = input_db->getDouble("LEFT_END");
         const double right_end = input_db->getDouble("RIGHT_END");
@@ -359,6 +439,9 @@ main(int argc, char* argv[])
         MU = input_db->getDouble("MU");
         Re = input_db->getDouble("Re"); 
         L = input_db->getDouble("L"); 
+        care_about_disp = input_db->getBool("CARE_ABOUT_DISP");
+        scale_kappa_factor = input_db->getDouble("SCALE_KAPPA_FACTOR");
+        scale_dt_factor = input_db->getDouble("SCALE_DT_FACTOR");
         const double R = input_db->getDouble("R");
         use_tanh_velocity = input_db->getBool("USE_TANH_VELOCITY");
         if(use_tanh_velocity){std::cout<<"Using limiting velocity.\n";}
@@ -746,7 +829,7 @@ main(int argc, char* argv[])
             U_L1_norm_stream.open("U_L1.curve", ios_base::out | ios_base::trunc);
             U_L2_norm_stream.open("U_L2.curve", ios_base::out | ios_base::trunc);
             U_max_norm_stream.open("U_max.curve", ios_base::out | ios_base::trunc);
-
+            max_disp_stream.open("max_disp.csv", ios_base::out | ios_base::trunc);
             drag_F_stream.precision(10);
             lift_F_stream.precision(10);
             drag_TAU_stream.precision(10);
@@ -758,7 +841,7 @@ main(int argc, char* argv[])
 
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
-        double dt = 0.0;
+        //double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
         {
             iteration_num = time_integrator->getIntegratorStep();
@@ -769,9 +852,19 @@ main(int argc, char* argv[])
             pout << "At beginning of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
 
-            dt = time_integrator->getMaximumTimeStepSize();
+            //dt = time_integrator->getMaximumTimeStepSize();
+            if(need_kappa_increase){
+                if(care_about_disp){
+                    kappa_s *= scale_kappa_factor;
+                    dt /= scale_dt_factor;
+                    pout << "~~~~~Kappa increased to " << kappa_s << "\n";
+                    pout << "~~~~~Time step size decreased to " << dt << "\n";
+                }
+
+            }
             time_integrator->advanceHierarchy(dt);
             loop_time += dt;
+            need_kappa_increase = false; //set this immediately to avoid extra increases on accident
 
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
@@ -789,7 +882,8 @@ main(int argc, char* argv[])
 			const Pointer<VariableContext> p_ctx = time_integrator->getCurrentContext();
 			const int p_idx = var_db->mapVariableAndContextToIndex(p_var, p_ctx);
 
-    
+            postprocess_displacement_data(mesh_upper,upper_equation_systems->get_system(IIMethod::COORD_MAPPING_SYSTEM_NAME));
+
             // At specified intervals, write visualization and restart files,
             // print out timer data, and store hierarchy data for post
             // processing.
@@ -868,6 +962,7 @@ main(int argc, char* argv[])
 									iteration_num,
 									loop_time,
 									postproc_data_dump_dirname);
+
 
 				
             }
@@ -1961,3 +2056,50 @@ postprocess_force_data(Pointer<Database> input_db,
     return;
 } // postprocess_data
 
+
+//Michael Facci code
+void
+postprocess_displacement_data(MeshBase &mesh, System &dX_system)
+{
+    double max_displacement = 0.0;
+
+    NumericVector<double> &dX_vec = *dX_system.solution.get();
+    NumericVector<double> &dX_ghost_vec = *dX_system.current_local_solution.get();
+    copy_and_synch(dX_vec, dX_ghost_vec);
+    DofMap &dX_dof_map = dX_system.get_dof_map();
+    std::vector<std::vector<dof_id_type> > dX_dof_indices(NDIM);
+    boost::multi_array<double, 2> dX_node;
+
+    const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
+    const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
+    for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+    {
+        const Elem* const elem = *el_it;
+
+        
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            dX_dof_map.dof_indices(elem, dX_dof_indices[d], d);
+        }
+
+
+        const int n_basis = static_cast<int>(dX_dof_indices[0].size());
+        get_values_for_interpolation(dX_node, dX_ghost_vec, dX_dof_indices);
+        for (int k = 0; k < n_basis; ++k)
+        {   
+	    double current_distance =0.0;
+            for (int d = 0; d < NDIM; ++d)
+            {
+ 		current_distance +=std::abs(dX_node[k][d]);  
+            }
+	    max_displacement = std::max(max_displacement,current_distance);
+
+        }
+    }
+
+    SAMRAI_MPI::maxReduction(&max_displacement, 1);
+    plog <<"" << max_displacement << std::endl;
+    if (SAMRAI_MPI::getRank()==0){
+        max_disp_stream<< "" <<max_displacement<<std::endl;
+    }
+} 

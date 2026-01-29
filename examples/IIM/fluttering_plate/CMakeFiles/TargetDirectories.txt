@@ -1,4 +1,0 @@
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/fluttering_plate/CMakeFiles/edit_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/fluttering_plate/CMakeFiles/rebuild_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/fluttering_plate/CMakeFiles/main3d.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/fluttering_plate/CMakeFiles/main2d.dir

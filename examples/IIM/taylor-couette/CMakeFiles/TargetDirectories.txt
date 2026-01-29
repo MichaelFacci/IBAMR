@@ -1,4 +1,0 @@
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/taylor-couette/CMakeFiles/rebuild_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/taylor-couette/CMakeFiles/edit_cache.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/taylor-couette/CMakeFiles/exe.dir
-/home/mfacci/sfw/ibamr/IBAMR/examples/IIM/taylor-couette/CMakeFiles/main2d.dir

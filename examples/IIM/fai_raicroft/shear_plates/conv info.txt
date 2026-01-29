@@ -1,0 +1,493 @@
+2 cut first
+
+N = 16:
+holding domain [-1,1]^2 size constant
+
+ Lagrangian WSS_L2_norm = -nan
+
+ Lagrangian WSS_max_norm = 0
+
+ Lagrangian U_L2_norm = 0.00441942
+
+ Lagrangian U_max_norm = 0.003125
+
+ Lagrangian disp_L2_norm = 0.0175872
+
+ Lagrangian disp_max_norm = 0.0124361
+
+Lagrangian P_L2_norm = 1.1496e-06
+
+Lagrangian P_max_norm = 2.43262e-06
+
+
+Writing state data...
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++
+Computing error norms.
+
+ p_Eulerian_L2_norm = nan
+ p_Eulerian_max_norm = 0
+
+ u_Eulerian_L2_norm = 0.00366074
+
+ u_Eulerian_max_norm = 0.002981
+
+Error in the Eulerian u at time 4:
+  L2-norm:  1.977352545833561e-05
+  max-norm: 2.216147650908797e-05
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ MU = 0.02
+  dx:  0.125
+  dt: 0.00124999999972486
+ Using the jump condition
+
+ MAX DISPLACEMENT at t = 4:     0.0124361
+ MAX NORM U at t = 4:           1.3221e-09
+---------------------------------------------------------------------
+
+
+N = 32
+
+Lagrangian WSS_L2_norm = -nan
+
+ Lagrangian WSS_max_norm = 0
+
+ Lagrangian U_L2_norm = 0.00441942
+
+ Lagrangian U_max_norm = 0.003125
+
+ Lagrangian disp_L2_norm = 0.0176551
+
+ Lagrangian disp_max_norm = 0.012484
+
+Lagrangian P_L2_norm = 2.28779e-06
+
+Lagrangian P_max_norm = 8.21239e-06
+
+
+Writing state data...
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++
+Computing error norms.
+
+ p_Eulerian_L2_norm = nan
+ p_Eulerian_max_norm = 0
+
+ u_Eulerian_L2_norm = 0.00355803
+
+ u_Eulerian_max_norm = 0.00308882
+
+Error in the Eulerian u at time 3.99999999999974:
+  L2-norm:  1.255370998146572e-05
+  max-norm: 1.956272533832487e-05
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ MU = 0.02
+  dx:  0.0625
+  dt: 0.0006250000000000001
+ Using the jump condition
+
+ MAX DISPLACEMENT at t = 4:     0.012484
+ MAX NORM U at t = 4:           1.471e-09
+----------------------------------------------------------------------
+
+N = 64
+
+ Lagrangian WSS_L2_norm = -nan
+
+ Lagrangian WSS_max_norm = 0
+
+ Lagrangian U_L2_norm = 0.00441942
+
+ Lagrangian U_max_norm = 0.003125
+
+ Lagrangian disp_L2_norm = 0.017672
+
+ Lagrangian disp_max_norm = 0.012496
+
+Lagrangian P_L2_norm = 2.04929e-06
+
+Lagrangian P_max_norm = 4.80869e-06
+
+
+Writing state data...
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++
+Computing error norms.
+
+ p_Eulerian_L2_norm = nan
+ p_Eulerian_max_norm = 0
+
+ u_Eulerian_L2_norm = 0.00343105
+
+ u_Eulerian_max_norm = 0.00302973
+
+Error in the Eulerian u at time 4:
+  L2-norm:  7.51945856342801e-06
+  max-norm: 1.459877164202436e-05
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ MU = 0.02
+  dx:  0.03125
+  dt: 0.0003124999991070965
+ Using the jump condition
+
+ MAX DISPLACEMENT at t = 4:     0.012496
+ MAX NORM U at t = 4:           1.30459e-09
+ ---------------------------------------------------------------------
+ 1 cut now
+ N = 16:
+
+  Lagrangian WSS_L2_norm = -nan
+
+ Lagrangian WSS_max_norm = 0
+
+ Lagrangian U_L2_norm = 0.0044193
+
+ Lagrangian U_max_norm = 0.00312492
+
+ Lagrangian disp_L2_norm = 0.0176244
+
+ Lagrangian disp_max_norm = 0.0124623
+
+Lagrangian P_L2_norm = 7.23353e-07
+
+Lagrangian P_max_norm = 1.85774e-06
+
+
+Writing state data...
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++
+Computing error norms.
+
+ p_Eulerian_L2_norm = nan
+ p_Eulerian_max_norm = 0
+
+ u_Eulerian_L2_norm = 0.00261479
+
+ u_Eulerian_max_norm = 0.00184395
+
+Error in the Eulerian u at time 4:
+  L2-norm:  0.001127402988924701
+  max-norm: 0.001148137808392177
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ MU = 0.02
+  dx:  0.125
+  dt: 0.00124999999972486
+ Using the jump condition
+
+ MAX DISPLACEMENT at t = 4:     0.0124624
+ MAX NORM U at t = 4:           8.9945e-08
+
+---------------------------------------------------------------
+
+ N = 32
+Lagrangian WSS_L2_norm = -nan
+
+ Lagrangian WSS_max_norm = 0
+
+ Lagrangian U_L2_norm = 0.00441942
+
+ Lagrangian U_max_norm = 0.003125
+
+ Lagrangian disp_L2_norm = 0.017657
+
+ Lagrangian disp_max_norm = 0.0124854
+
+Lagrangian P_L2_norm = 5.08106e-07
+
+Lagrangian P_max_norm = 7.97946e-07
+
+
+Writing state data...
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++
+Computing error norms.
+
+ p_Eulerian_L2_norm = nan
+ p_Eulerian_max_norm = 0
+
+ u_Eulerian_L2_norm = 0.00343797
+
+ u_Eulerian_max_norm = 0.0028578
+
+Error in the Eulerian u at time 3.99999999999974:
+  L2-norm:  0.0001657583466205966
+  max-norm: 0.0002339729263423724
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ MU = 0.02
+  dx:  0.0625
+  dt: 0.0006250000000000001
+ Using the jump condition
+
+ MAX DISPLACEMENT at t = 4:     0.0124854
+ MAX NORM U at t = 4:           2.16463e-09
+
+---------------------------------------------------------------------
+N = 64 1 cut
+
+ Lagrangian WSS_L2_norm = -nan
+
+ Lagrangian WSS_max_norm = 0
+
+ Lagrangian U_L2_norm = 0.00441942
+
+ Lagrangian U_max_norm = 0.003125
+
+ Lagrangian disp_L2_norm = 0.017672
+
+ Lagrangian disp_max_norm = 0.012496
+
+Lagrangian P_L2_norm = 2.04929e-06
+
+Lagrangian P_max_norm = 4.80869e-06
+
+
+Writing state data...
+
+0.012496
+1.30459e-09
+
++++++++++++++++++++++++++++++++++++++++++++++++++++
+Computing error norms.
+
+0.012496
+1.30459e-09
+ p_Eulerian_L2_norm = nan
+ p_Eulerian_max_norm = 0
+
+ u_Eulerian_L2_norm = 0.00343105
+
+ u_Eulerian_max_norm = 0.00302973
+
+Error in the Eulerian u at time 4:
+  L2-norm:  7.51945856342801e-06
+  max-norm: 1.459877164202436e-05
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ MU = 0.02
+  dx:  0.03125
+  dt: 0.0003124999991070965
+ Using the jump condition
+
+ MAX DISPLACEMENT at t = 4:     0.012496
+ MAX NORM U at t = 4:           1.30459e-09
+
+
+
+--------------------------------------------CONCENTRIC ROT CYL -----------------------
+
+1cut:
+
+N = 16:
+Error in the Eulerian u at time 5:
+  L2-norm:  0.0001697361165058167
+  max-norm: 0.0002607110236366803
+
+  +++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.007456372598854582
+
+ Lagrangian WSS_max_norm = 0.003459775446606995
+
+ Lagrangian U_L2_norm = 4.061185124791272e-05
+
+ Lagrangian U_max_norm = 3.78907677345019e-05
+
+ Lagrangian disp_L2_norm = 0.0002496987646578635
+
+ Lagrangian disp_max_norm = 0.0002266480117226743
+
+Lagrangian P_L2_norm = 0.03114091099488225
+
+Lagrangian P_max_norm = 0.03329087181404306
+
+Error in the Eulerian p at time 4.999375000000038:
+  L2-norm:  0.009894364314121787
+  max-norm: 0.03339247806945826
+
+
+N = 32:
+Error in the Eulerian u at time 5:
+  L2-norm:  0.0001025184898028665
+  max-norm: 0.0002010595826168386
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.006171617007930982
+
+ Lagrangian WSS_max_norm = 0.002783713713127326
+
+ Lagrangian U_L2_norm = 2.395452475588712e-05
+
+ Lagrangian U_max_norm = 2.432338316866991e-05
+
+ Lagrangian disp_L2_norm = 0.0001348713422524636
+
+ Lagrangian disp_max_norm = 0.0001430245221902826
+
+Lagrangian P_L2_norm = 0.06836340441063397
+
+Lagrangian P_max_norm = 0.07971606018952748
+
+Error in the Eulerian p at time 4.999687500000126:
+  L2-norm:  0.01131030390415291
+  max-norm: 0.05162862740606771
+
+
+N = 64:
+Error in the Eulerian u at time 4.999999999999983:
+  L2-norm:  3.432452838464664e-05
+  max-norm: 0.0001032879358987213
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.003322154044949647
+
+ Lagrangian WSS_max_norm = 0.001529749588750534
+
+ Lagrangian U_L2_norm = 2.138695011151448e-06
+
+ Lagrangian U_max_norm = 4.530409340268291e-06
+
+ Lagrangian disp_L2_norm = 2.323764103271761e-05
+
+ Lagrangian disp_max_norm = 2.407314631769353e-05
+
+Lagrangian P_L2_norm = 0.04660709953300602
+
+Lagrangian P_max_norm = 0.05614937919245382
+
+Error in the Eulerian p at time 4.999843749999983:
+  L2-norm:  0.008601775307469603
+  max-norm: 0.03885951174171658
+
+
+N = 128:
+Error in the Eulerian u at time 4.999999999997718:
+  L2-norm:  1.594827404816422e-05
+  max-norm: 7.74713615934739e-05
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.0007079356047407243
+
+ Lagrangian WSS_max_norm = 0.0004087639484208717
+
+ Lagrangian U_L2_norm = 6.4820369388668e-08
+
+ Lagrangian U_max_norm = 5.387239455364535e-08
+
+ Lagrangian disp_L2_norm = 3.83911589020188e-06
+
+ Lagrangian disp_max_norm = 2.206370612323205e-06
+
+Lagrangian P_L2_norm = 0.03000105150477254
+
+Lagrangian P_max_norm = 0.02115270595725679
+
+Error in the Eulerian p at time 4.999921874997718:
+  L2-norm:  0.005473227529712272
+  max-norm: 0.0211129706677388
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  2 CUT:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  N = 16:
+Error in the Eulerian u at time 5:
+  L2-norm:  8.814384537265e-05
+  max-norm: 0.0001564886646016749
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.00737688592193183
+
+ Lagrangian WSS_max_norm = 0.0034080558876321
+
+ Lagrangian U_L2_norm = 1.942617664313662e-05
+
+ Lagrangian U_max_norm = 1.675609733255558e-05
+
+ Lagrangian disp_L2_norm = 0.0001233155305266186
+
+ Lagrangian disp_max_norm = 7.919760380659113e-05
+
+Lagrangian P_L2_norm = 0.01277344121247186
+
+Lagrangian P_max_norm = 0.0127965685968621
+
+Error in the Eulerian p at time 4.999375000000038:
+  L2-norm:  0.004522114984476406
+  max-norm: 0.01343943081991251
+
+
+N = 32:
+Error in the Eulerian u at time 5:
+  L2-norm:  4.970055447485446e-05
+  max-norm: 0.0001234732752699388
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.006000933594859792
+
+ Lagrangian WSS_max_norm = 0.002734029031111487
+
+ Lagrangian U_L2_norm = 1.767914921927493e-05
+
+ Lagrangian U_max_norm = 1.539125487097541e-05
+
+ Lagrangian disp_L2_norm = 9.79371709451748e-05
+
+ Lagrangian disp_max_norm = 8.588959664979079e-05
+
+Lagrangian P_L2_norm = 0.04924349034872036
+
+Lagrangian P_max_norm = 0.04840720474977373
+
+Error in the Eulerian p at time 4.999687500000126:
+  L2-norm:  0.009271402098831255
+  max-norm: 0.03924827537271065
+
+
+N = 64:
+Error in the Eulerian u at time 4.999999999999983:
+  L2-norm:  3.449850761942812e-05
+  max-norm: 0.0001037508103419141
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.003320307495573719
+
+ Lagrangian WSS_max_norm = 0.001529413274037902
+
+ Lagrangian U_L2_norm = 2.153144087027649e-06
+
+ Lagrangian U_max_norm = 4.556665997939755e-06
+
+ Lagrangian disp_L2_norm = 2.336652302852395e-05
+
+ Lagrangian disp_max_norm = 2.431612576780928e-05
+
+Lagrangian P_L2_norm = 0.04687494835755934
+
+Lagrangian P_max_norm = 0.05670984103041497
+
+Error in the Eulerian p at time 4.999843749999983:
+  L2-norm:  0.008648130617258788
+  max-norm: 0.03907996033786728
+
+
+N = 128:
+Error in the Eulerian u at time 4.999999999997718:
+  L2-norm:  1.594827404816422e-05
+  max-norm: 7.74713615934739e-05
++++++++++++++++++++++++++++++++++++++++++++++++++++
+ Lagrangian WSS_L2_norm = 0.0007079356047407243
+
+ Lagrangian WSS_max_norm = 0.0004087639484208717
+
+ Lagrangian U_L2_norm = 6.4820369388668e-08
+
+ Lagrangian U_max_norm = 5.387239455364535e-08
+
+ Lagrangian disp_L2_norm = 3.83911589020188e-06
+
+ Lagrangian disp_max_norm = 2.206370612323205e-06
+
+Lagrangian P_L2_norm = 0.03000105150477254
+
+Lagrangian P_max_norm = 0.02115270595725679
+
+Error in the Eulerian p at time 4.999921874997718:
+  L2-norm:  0.005473227529712272
+  max-norm: 0.0211129706677388

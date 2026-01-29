@@ -187,6 +187,10 @@ void compute_velocity_profile(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                               const int u_idx,
                               const double data_time,
                               const string& data_dump_dirname);
+void compute_velocity_profile_u_x(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
+                              const int u_idx,
+                              const double data_time,
+                              const string& data_dump_dirname);
                               
 void compute_pressure_profile(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                               const int p_idx,
@@ -310,7 +314,7 @@ main(int argc, char* argv[])
             for (int k = 0; k < num_circum_nodes1; ++k)
             {
                 const double theta1 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes1);
-                mesh_interior.add_point(libMesh::Point(R * cos(theta1), R * sin(theta1)));
+                mesh_interior.add_point(libMesh::Point(R * cos(theta1), R * sin(theta1) - e));
             }
 
             for (unsigned int i = 0; i < num_circum_nodes1 ; i++){
@@ -333,7 +337,7 @@ main(int argc, char* argv[])
             for (int k = 0; k < num_circum_nodes1; ++k)
             {
                 const double theta1 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes1);
-                mesh_interior.add_point(libMesh::Point(R * cos(theta1), R * sin(theta1))); //end of elem node
+                mesh_interior.add_point(libMesh::Point(R * cos(theta1), R * sin(theta1) - e)); //end of elem node
 
                 mesh_interior.add_point(libMesh::Point(R * cos(theta1+base_theta/2.0), R * sin(theta1+base_theta/2.0))); //midpoint of elem for quad elems
             }
@@ -373,7 +377,7 @@ main(int argc, char* argv[])
             for (int k = 0; k < num_circum_nodes2; ++k)
             {
                 const double theta2 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes2);
-                mesh_exterior.add_point(libMesh::Point( Ro * cos(theta2) + e, Ro * sin(theta2)));
+                mesh_exterior.add_point(libMesh::Point( Ro * cos(theta2), Ro * sin(theta2)));
             }
 
             for (unsigned int i = 0; i < num_circum_nodes2 ; i++){
@@ -396,7 +400,7 @@ main(int argc, char* argv[])
             for (int k = 0; k < num_circum_nodes2; ++k)
             {
                 const double theta2 = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes2);
-                mesh_exterior.add_point(libMesh::Point(Ro * cos(theta2)+e, Ro * sin(theta2))); //end of elem node
+                mesh_exterior.add_point(libMesh::Point(Ro * cos(theta2), Ro * sin(theta2))); //end of elem node
 
                 mesh_exterior.add_point(libMesh::Point(Ro * cos(theta2+base_theta_2/2.0)+e, Ro * sin(theta2+base_theta_2/2.0))); //midpoint of elem for quad elems
             }
@@ -671,6 +675,8 @@ main(int argc, char* argv[])
                 pout << "\nWriting state data...\n\n";
                 
                 compute_velocity_profile(patch_hierarchy, u_idx, loop_time,
+                                         postproc_data_dump_dirname);
+                compute_velocity_profile_u_x(patch_hierarchy, u_idx, loop_time,
                                          postproc_data_dump_dirname);
                 compute_pressure_profile(patch_hierarchy, p_idx, loop_time,
                                          postproc_data_dump_dirname);
@@ -1442,6 +1448,144 @@ void compute_velocity_profile(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
     return;
 } // compute_velocity_profile
 
+
+
+void compute_velocity_profile_u_x(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
+                              const int u_idx,
+                              const double data_time,
+                              const string& data_dump_dirname)
+{
+    const int coarsest_ln = 0;
+    const int finest_ln = patch_hierarchy->getFinestLevelNumber();
+    double x_loc = 0.0; // x location where the velocity profile is computed
+    const double X_min[2] = { x_loc, -0.5 * L };
+    const double X_max[2] = { x_loc, 0.5 * L };
+    vector<double> pos_values;
+    for (int ln = finest_ln; ln >= coarsest_ln; --ln)
+    {
+        Pointer<PatchLevel<NDIM> > level = patch_hierarchy->getPatchLevel(ln);
+        for (PatchLevel<NDIM>::Iterator p(level); p; p++)
+        {
+            Pointer<Patch<NDIM> > patch = level->getPatch(p());
+            const Box<NDIM>& patch_box = patch->getBox();
+            const CellIndex<NDIM>& patch_lower = patch_box.lower();
+            const CellIndex<NDIM>& patch_upper = patch_box.upper();
+            
+            const Pointer<CartesianPatchGeometry<NDIM> > patch_geom =
+            patch->getPatchGeometry();
+            const double* const patch_x_lower = patch_geom->getXLower();
+            const double* const patch_x_upper = patch_geom->getXUpper();
+            const double* const patch_dx = patch_geom->getDx();
+            
+            const bool inside_patch = x_loc >= patch_x_lower[0] && x_loc <= patch_x_upper[0] &&
+                                      !(patch_x_upper[1] < 0.5 * L || patch_x_lower[1] > -0.5 * L);
+            
+            //y_loc >= patch_x_lower[1] && y_loc <= patch_x_upper[1] &&
+            //!(patch_x_upper[0] < -0.5*L || patch_x_lower[0] > 0.5*L);
+            if (!inside_patch) continue;
+            
+            // Entire box containing the required data.
+            Box<NDIM> box(IndexUtilities::getCellIndex(
+                &X_min[0], patch_x_lower, patch_x_upper,
+                                                       patch_dx, patch_lower, patch_upper),
+                          IndexUtilities::getCellIndex(
+                            &X_max[0], patch_x_lower, patch_x_upper,
+                                                       patch_dx, patch_lower, patch_upper));
+            // Part of the box on this patch
+            Box<NDIM> trim_box = patch_box * box;
+            BoxList<NDIM> iterate_box_list = trim_box;
+            
+            // Trim the box covered by the finer region
+            BoxList<NDIM> covered_boxes;
+            if (ln < finest_ln)
+            {
+                BoxArray<NDIM> refined_region_boxes;
+                Pointer<PatchLevel<NDIM> > next_finer_level =
+                patch_hierarchy->getPatchLevel(ln + 1);
+                refined_region_boxes = next_finer_level->getBoxes();
+                refined_region_boxes.coarsen(next_finer_level->getRatioToCoarserLevel());
+                for (int i = 0; i < refined_region_boxes.getNumberOfBoxes(); ++i)
+                {
+                    const Box<NDIM> refined_box = refined_region_boxes[i];
+                    const Box<NDIM> covered_box = trim_box * refined_box;
+                    covered_boxes.unionBoxes(covered_box);
+                }
+            }
+            iterate_box_list.removeIntersections(covered_boxes);
+            
+            // Loop over the boxes and store the location and interpolated value.
+            Pointer<SideData<NDIM, double> > u_data = patch->getPatchData(u_idx);
+            for (BoxList<NDIM>::Iterator lit(iterate_box_list); lit; lit++)
+            {
+                const Box<NDIM>& iterate_box = *lit;
+                for (Box<NDIM>::Iterator bit(iterate_box); bit; bit++)
+                {
+                    const CellIndex<NDIM>& lower_idx = *bit;
+                    CellIndex<NDIM> upper_idx = lower_idx;
+                    upper_idx(0) += 1;
+                    const double y = patch_x_lower[1] + patch_dx[1] * (lower_idx(1) - patch_lower(1) + 0.5);
+                    const double x0 = patch_x_lower[0] + patch_dx[0] * (lower_idx(0) - patch_lower(0));
+                    const double x1 = x0 + patch_dx[0];
+                    const double u0 = (*u_data)(SideIndex<NDIM>(lower_idx, 0, SideIndex<NDIM>::Lower));
+                    const double u1 = (*u_data)(SideIndex<NDIM>(upper_idx, 0, SideIndex<NDIM>::Lower));
+                    pos_values.push_back(y);
+                    pos_values.push_back(u0 + (u1 - u0) * (x_loc - x0) / (x1 - x0));
+                    //std::cout<< "pushed back u value of: "<<u0 + (u1 - u0) * (x_loc - x0) / (x1 - x0)<<"\n";
+                    /*
+                    const double x =
+                    patch_x_lower[0] + patch_dx[0] * (lower_idx(0) - patch_lower(0) + 0.5);
+                    const double y0 =
+                    patch_x_lower[1] + patch_dx[1] * (lower_idx(1) - patch_lower(1));
+                    const double y1 = y0 + patch_dx[1];
+                    const double u0 =
+                    (*u_data)(SideIndex<NDIM>(lower_idx, 1, SideIndex<NDIM>::Lower));
+                    const double u1 =
+                    (*u_data)(SideIndex<NDIM>(upper_idx, 1, SideIndex<NDIM>::Lower));
+                    pos_values.push_back(x);
+                    pos_values.push_back(u0 + (u1 - u0) * (y_loc - y0) / (y1 - y0));
+                    */
+                }
+            }
+        }
+    }
+    
+    const int nprocs = SAMRAI_MPI::getNodes();
+    const int rank = SAMRAI_MPI::getRank();
+    vector<int> data_size(nprocs, 0);
+    data_size[rank] = static_cast<int>(pos_values.size());
+    SAMRAI_MPI::sumReduction(&data_size[0], nprocs);
+    int offset = 0;
+    offset = std::accumulate(&data_size[0], &data_size[rank], offset);
+    int size_array = 0;
+    size_array = std::accumulate(&data_size[0], &data_size[0] + nprocs, size_array);
+    
+    // Write out the result in a file.
+    string file_name = data_dump_dirname + "/" + "u_x_";
+    char temp_buf[128];
+    sprintf(temp_buf, "%.8f", data_time);
+    file_name += temp_buf;
+    
+    MPI_Status status;
+    MPI_Offset mpi_offset;
+    MPI_File file;
+    MPI_File_open(MPI_COMM_WORLD, file_name.c_str(), MPI_MODE_CREATE | MPI_MODE_WRONLY,
+                  MPI_INFO_NULL, &file);
+    
+    // First write the total size of the array.
+    if (rank == 0)
+    {
+        mpi_offset = 0;
+        MPI_File_seek(file, mpi_offset, MPI_SEEK_SET);
+        MPI_File_write(file, &size_array, 1, MPI_INT, &status);
+    }
+    
+    mpi_offset = sizeof(double) * offset + sizeof(int);
+    MPI_File_seek(file, mpi_offset, MPI_SEEK_SET);
+    MPI_File_write(file, &pos_values[0], data_size[rank], MPI_DOUBLE, &status);
+    MPI_File_close(&file);
+    
+    return;
+} // compute_velocity_profile_u_x
 
 void compute_pressure_profile(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                               const int p_idx,

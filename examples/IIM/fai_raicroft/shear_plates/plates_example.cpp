@@ -184,6 +184,7 @@ tether_force_function_lower(VectorValue<double>& F,
 }
 using namespace ModelData;
 
+static ofstream max_displacement_stream, max_norm_u_stream;
 
 void velocity_convergence(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                               const int u_idx,
@@ -230,6 +231,12 @@ void postprocess_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                  const int iteration_num,
                  const double loop_time,
                  const string& data_dump_dirname);
+
+void postprocess_displacement_data(MeshBase &mesh,
+                                   System &dX_system);
+
+void postprocess_velocity_data(MeshBase &mesh,
+                                   System &U_system);
 
 /*******************************************************************************
  * For each run, the input filename and restart information (if needed) must   *
@@ -311,7 +318,8 @@ main(int argc, char* argv[])
         int node_id = 0;
         mesh_upper.get_boundary_info().clear_boundary_node_ids();
         for (unsigned int i = 0; i <= n_elem_gen; i++){
-            mesh_upper.add_point(libMesh::Point(right_end - ds * i, separation/2),node_id++);
+            mesh_upper.add_point(libMesh::Point(right_end - ds * i, separation/2),node_id++); //top goes right to left, (n pointed up)
+            //mesh_upper.add_point(libMesh::Point(left_end + ds * i, separation/2),node_id++); //top goes left to right, (n pointed down)
         }
         
 
@@ -322,12 +330,13 @@ main(int argc, char* argv[])
             elem->set_node(1) = mesh_upper.node_ptr(i+1);
         }
         mesh_upper.prepare_for_use();
+
         //----------------now lower----------------------
         node_id = 0;
         mesh_lower.get_boundary_info().clear_boundary_node_ids();
         for (unsigned int i = 0; i <= n_elem_gen; i++){
-           //mesh_lower.add_point(libMesh::Point(left_end + ds * i, -separation/2),node_id++);
-           mesh_lower.add_point(libMesh::Point(left_end + ds * i, -separation/2),node_id++); //generate opposite direction so that n is opposite of upper plate
+           mesh_lower.add_point(libMesh::Point(left_end + ds * i, -separation/2),node_id++); //no goes left to right, (n pointed down)
+           //mesh_lower.add_point(libMesh::Point(right_end - ds * i, -separation/2),node_id++); //n goes right to left, (n pointed up)
         }
 
         //add Elems using adjacent nodes
@@ -504,6 +513,17 @@ main(int argc, char* argv[])
             }
         }
 
+        postprocess_displacement_data(upper_equation_systems->get_mesh(),
+                                      upper_equation_systems->get_system(IIMethod::COORD_MAPPING_SYSTEM_NAME));
+        postprocess_velocity_data(upper_equation_systems->get_mesh(),
+                                      upper_equation_systems->get_system(IIMethod::VELOCITY_SYSTEM_NAME));
+        
+        if (SAMRAI_MPI::getRank() == 0)
+        { 
+            max_displacement_stream.open("max_displacement");
+            max_norm_u_stream.open("max_norm_u");
+        }
+                                      
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
         double dt = 0.0;
@@ -610,7 +630,10 @@ main(int argc, char* argv[])
                                          
                                          
             }
-       
+            postprocess_displacement_data(upper_equation_systems->get_mesh(),
+                                      upper_equation_systems->get_system(IIMethod::COORD_MAPPING_SYSTEM_NAME));
+            postprocess_velocity_data(upper_equation_systems->get_mesh(),
+                                      upper_equation_systems->get_system(IIMethod::VELOCITY_SYSTEM_NAME));
         }
         
        
@@ -620,6 +643,10 @@ main(int argc, char* argv[])
         pout << "\n"
              << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n"
              << "Computing error norms.\n\n";
+        postprocess_displacement_data(upper_equation_systems->get_mesh(),
+                                      upper_equation_systems->get_system(IIMethod::COORD_MAPPING_SYSTEM_NAME));
+        postprocess_velocity_data(upper_equation_systems->get_mesh(),
+                                      upper_equation_systems->get_system(IIMethod::VELOCITY_SYSTEM_NAME));
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
         const int finest_ln = patch_hierarchy->getFinestLevelNumber();
         HierarchyMathOps hier_math_ops("hier_math_ops", patch_hierarchy);
@@ -699,7 +726,11 @@ main(int argc, char* argv[])
         
         
 				    
-				    
+        if (SAMRAI_MPI::getRank() == 0)
+        { 
+            max_displacement_stream.close();
+            max_norm_u_stream.close();
+        }
 				    
 
         // Cleanup Eulerian boundary condition specification objects (when
@@ -714,6 +745,98 @@ main(int argc, char* argv[])
 
 
 
+
+void
+postprocess_displacement_data(MeshBase &mesh, System &dX_system)
+{
+    double max_displacement = 0.0;
+
+    NumericVector<double> &dX_vec = *dX_system.solution.get();
+    NumericVector<double> &dX_ghost_vec = *dX_system.current_local_solution.get();
+    copy_and_synch(dX_vec, dX_ghost_vec);
+    DofMap &dX_dof_map = dX_system.get_dof_map();
+    std::vector<std::vector<dof_id_type> > dX_dof_indices(NDIM);
+    boost::multi_array<double, 2> dX_node;
+
+    const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
+    const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
+    for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+    {
+        const Elem* const elem = *el_it;
+
+        
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            dX_dof_map.dof_indices(elem, dX_dof_indices[d], d);
+        }
+
+
+        const int n_basis = static_cast<int>(dX_dof_indices[0].size());
+        get_values_for_interpolation(dX_node, dX_ghost_vec, dX_dof_indices);
+        for (int k = 0; k < n_basis; ++k)
+        {   
+	    double current_distance =0.0;
+            for (int d = 0; d < NDIM; ++d)
+            {
+ 		current_distance +=std::abs(dX_node[k][d]);  
+            }
+	    max_displacement = std::max(max_displacement,current_distance);
+
+        }
+    }
+
+    SAMRAI_MPI::maxReduction(&max_displacement, 1);
+    plog <<"" << max_displacement << std::endl;
+    if (SAMRAI_MPI::getRank()==0)
+	    max_displacement_stream<< "" <<max_displacement<<std::endl;
+} 
+
+
+void
+postprocess_velocity_data(MeshBase &mesh, System &U_system)
+{
+    double max_norm_u = 0.0;
+
+    NumericVector<double> &U_vec = *U_system.solution.get();
+    NumericVector<double> &U_ghost_vec = *U_system.current_local_solution.get();
+    copy_and_synch(U_vec, U_ghost_vec);
+    DofMap &U_dof_map = U_system.get_dof_map();
+    std::vector<std::vector<dof_id_type> > U_dof_indices(NDIM);
+    boost::multi_array<double, 2> U_node;
+
+    const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
+    const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
+    for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+    {
+        const Elem* const elem = *el_it;
+
+        
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            U_dof_map.dof_indices(elem, U_dof_indices[d], d);
+        }
+
+        const int n_basis = static_cast<int>(U_dof_indices[0].size());
+        get_values_for_interpolation(U_node, U_ghost_vec, U_dof_indices);
+        for (int k = 0; k < n_basis; ++k)
+        {   
+	    double current_u_max_norm = 0.0;
+            
+            current_u_max_norm = std::abs(U_node[k][0] - upper_drift_velocity); //x-component discrepancy with the prescribed velocity
+            /*
+            for (int d = 0; d < NDIM; ++d){
+ 		        current_distance +=std::abs(dX_node[k][d]);  
+            }*/
+	        max_norm_u = std::max(max_norm_u, current_u_max_norm);
+
+        }
+    }
+
+    SAMRAI_MPI::maxReduction(&max_norm_u, 1);
+    plog <<"" << max_norm_u << std::endl;
+    if (SAMRAI_MPI::getRank()==0)
+	    max_norm_u_stream<< "" <<max_norm_u<<std::endl;
+} 
 
 
 void velocity_convergence(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,

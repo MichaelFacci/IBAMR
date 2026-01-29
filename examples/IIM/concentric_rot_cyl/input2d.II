@@ -9,7 +9,7 @@ U_MAX = 2.0
 // grid spacing parameters
 MAX_LEVELS = 1                                      // maximum number of levels in locally refined grid
 REF_RATIO  = 1                                      // refinement ratio between levels
-N = 16                                        // actual    number of grid cells on coarsest grid level
+N = 32                                        // actual    number of grid cells on coarsest grid level
 NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N            // effective number of grid cells on finest   grid level
 DX0 = L/N                                           // mesh width on coarsest grid level
 DX  = L/NFINEST                                     // mesh width on finest   grid level
@@ -17,7 +17,7 @@ MFAC = 1.0                                          // ratio of Lagrangian mesh 
 ELEM_TYPE = "TRI3"                                  // type of element to use for structure discretization
 elem_order = "FIRST"   
 R = 0.75
-Ro = 0.75*(1.0+1.0/24.0)
+Ro = 0.75 + 0.03125 //DX/2 //0.75*(1.0+1.0/24.0)
 B = 0.0
 OMEGA1 = 0.000833  
 OMEGA2 = 0.0
@@ -65,18 +65,19 @@ OUTPUT_DIV_U               = TRUE
 ENABLE_LOGGING             = TRUE
 
 
-e = 0.0 //3.0/128 //0.5* (Ro - R) //0.05 //3.0/128
+e = (Ro-R)/2.0 //0.0 //3.0/128 //0.5* (Ro - R) //0.05 //3.0/128
 
 c = Ro - R
 
 eps = e/(Ro-R)
 
 SHIFT = 0.0
+shift = 0.0
 
 KAPPA_S = 0.0002/DT^2  //0.0005/DT^2 //10000 //0.00001*DX/DT^2 //2.5*DX/DT^2
 ETA_S = 0.0/DT
 
-USE_SECOND_VELOCITY_CORRECTION = FALSE
+USE_SECOND_VELOCITY_CORRECTION = TRUE
 USE_CURRENT_MESH_CONFIGURATION = TRUE
 //P = "0.0"
 EXPLICITLY_REMOVE_NULLSPACE = TRUE
@@ -85,9 +86,18 @@ AA = (OMEGA2*Ro*Ro - OMEGA1*R*R)/(Ro*Ro - R*R)
 BB = (OMEGA1 - OMEGA2)*R*R*Ro*Ro/(Ro*Ro - R*R)
 
 
-U = "(sqrt(X0*X0 + X1*X1)< R ? -omega1*X1 : (sqrt((X0 - e)*(X0 - e) + X1*X1)> Ro ? 0.0 : -omega1*X1*(1.0 - (sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - (3*eps*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - ((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)))*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1))))*(2*X0/sqrt(X0*X0 + X1*X1)+3*eps+eps*eps*X0/sqrt(X0*X0 + X1*X1)))/((2+eps^2)*(1+eps*X0/sqrt(X0*X0 + X1*X1))))))"
-V = "(sqrt(X0*X0 + X1*X1)< R ? omega1*X0 :  (sqrt((X0- e)*(X0 - e) + X1*X1)> Ro ? 0.0 : omega1*X0*(1.0 - (sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - (3*eps*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - ((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)))*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1))))*(2*X0/sqrt(X0*X0 + X1*X1)+3*eps+eps*eps*X0/sqrt(X0*X0 + X1*X1)))/((2+eps^2)*(1+eps*X0/sqrt(X0*X0 + X1*X1))))))"
-P = "(sqrt(X0*X0 + X1*X1)< R ? 0.5*omega1*omega1*(X0*X0 + X1*X1) :  (sqrt((X0- e)*(X0 - e) + X1*X1)> Ro ? 0.0 : 6*MU*eps*omega1*R*R*(2.0 + eps*X0/sqrt(X0*X0 + X1*X1))*(X1/sqrt(X0*X0 + X1*X1))/((2+eps^2)*c*c*(1+eps*X0/sqrt(X0*X0 + X1*X1))*(1+eps*X0/sqrt(X0*X0 + X1*X1))) ))"
+//U = "(sqrt(X0*X0 + X1*X1)< R ? -omega1*X1 : (sqrt((X0 - e)*(X0 - e) + X1*X1)> Ro ? 0.0 : -omega1*X1*(1.0 - (sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - (3*eps*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - ((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)))*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1))))*(2*X0/sqrt(X0*X0 + X1*X1)+3*eps+eps*eps*X0/sqrt(X0*X0 + X1*X1)))/((2+eps^2)*(1+eps*X0/sqrt(X0*X0 + X1*X1))))))"
+//V = "(sqrt(X0*X0 + X1*X1)< R ? omega1*X0 :  (sqrt((X0- e)*(X0 - e) + X1*X1)> Ro ? 0.0 : omega1*X0*(1.0 - (sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - (3*eps*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)) - ((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1)))*((sqrt(X0*X0 + X1*X1) - R)/(c + e*X0/sqrt(X0*X0 + X1*X1))))*(2*X0/sqrt(X0*X0 + X1*X1)+3*eps+eps*eps*X0/sqrt(X0*X0 + X1*X1)))/((2+eps^2)*(1+eps*X0/sqrt(X0*X0 + X1*X1))))))"
+//P = "(sqrt(X0*X0 + X1*X1)< R ? 0.5*omega1*omega1*(X0*X0 + X1*X1) :  (sqrt((X0- e)*(X0 - e) + X1*X1)> Ro ? 0.0 : 6*MU*eps*omega1*R*R*(2.0 + eps*X0/sqrt(X0*X0 + X1*X1))*(X1/sqrt(X0*X0 + X1*X1))/((2+eps^2)*c*c*(1+eps*X0/sqrt(X0*X0 + X1*X1))*(1+eps*X0/sqrt(X0*X0 + X1*X1))) ))"
+
+
+U = "(sqrt(X0*X0 + X1*X1)< R ? -OMEGA1*X1 : (sqrt(X0*X0 + X1*X1)> Ro ? 0.0 : -X1*(AA + BB/(X0*X0 + X1*X1))))"
+V = "(sqrt(X0*X0 + X1*X1)< R ? OMEGA1*X0 : (sqrt(X0*X0 + X1*X1)> Ro ? 0.0 : X0*(AA + BB/(X0*X0 + X1*X1))))"
+P = "(sqrt(X0*X0 + X1*X1)< R ? 0.5*OMEGA1*OMEGA1*(X0*X0 + X1*X1) + shift: 0.5*AA*AA*(X0*X0 + X1*X1) - 0.5*BB*BB/(X0*X0 + X1*X1) + 2*AA*BB*log(sqrt(X0*X0 + X1*X1)) )"
+
+
+
+
 
 //P = "if(sqrt(X0*X0 + X1*X1)< R, -0.2 + 0.5*omega1*omega1*(X0*X0 + X1*X1), if(sqrt(X0*X0 + X1*X1)> Ro, 0.0,  0.5*AA*AA*(X0*X0 + X1*X1) - 0.5*BB*BB/(X0*X0 + X1*X1) + AA*BB*log(X0*X0 + X1*X1) - 0.5*AA*AA*Ro*Ro + 0.5*BB*BB/(Ro*Ro) - AA*BB*log(Ro*Ro)))"
 //P = "0.0"
@@ -99,8 +109,8 @@ VelocityBcCoefs_0 {
 
     R = R
     Ro = Ro
-    omega1 = OMEGA1
-    omega2 = OMEGA2
+    OMEGA1 = OMEGA1
+    OMEGA2 = OMEGA2
     
     AA = AA
     BB = BB
@@ -156,8 +166,8 @@ VelocityInitialConditions{
 
  R = R
  Ro = Ro
- omega1 = OMEGA1
- omega2 = OMEGA2
+ OMEGA1 = OMEGA1
+ OMEGA2 = OMEGA2
 
     AA = AA
     eps = eps
@@ -178,8 +188,9 @@ c=c
  MU = MU
     R = R
     Ro = Ro
-    omega1 = OMEGA1
-    omega2 = OMEGA2
+    OMEGA1 = OMEGA1
+    OMEGA2 = OMEGA2
+    shift = shift
    function = P
 }
 
