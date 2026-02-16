@@ -1,5 +1,5 @@
 // physical parameters
-Re = 200.0
+Re = 300.0
 RHO = 1.0
 R_D   = 1.0
 R_COM = 0.0, 0.0, 0.0
@@ -32,14 +32,14 @@ USE_CONSISTENT_MASS_MATRIX = TRUE              // whether to use a consistent or
 IB_POINT_DENSITY           = 4.0               // approximate density of IB quadrature points for Lagrangian-Eulerian interaction
 SOLVER_TYPE                = "STAGGERED"       // the fluid solver to use (STAGGERED or COLLOCATED)
 START_TIME                 = 0.0e0             // initial simulation time
-END_TIME                   = 50.0             // final simulation time
+END_TIME                   = 80.0             // final simulation time
 GROW_DT                    = 2.0e0             // growth factor for timesteps
 CONVECTIVE_TS_TYPE         = "ADAMS_BASHFORTH" // convective time stepping type
 CONVECTIVE_OP_TYPE         = "STABILIZED_PPM"             // convective differencing discretization type
 CONVECTIVE_FORM            = "ADVECTIVE"       // how to compute the convective terms
 NORMALIZE_PRESSURE         = FALSE             // whether to explicitly force the pressure to have mean zero
 CFL_MAX                    = 0.4               // maximum CFL number
-DT                         = 0.002 //0.2 * CFL_MAX*DX   // maximum timestep size
+DT                         = 0.002 //5e-5//0.004 //0.2 * CFL_MAX*DX   // maximum timestep size
 ERROR_ON_DT_CHANGE         = TRUE              // whether to emit an error message if the time step size changes
 VORTICITY_TAGGING          = TRUE              // whether to tag cells for refinement based on vorticity thresholds
 TAG_BUFFER                 = 4                 // size of tag buffer used by grid generation algorithm
@@ -55,16 +55,18 @@ ENABLE_LOGGING             = TRUE
 
 THETA_TIP = 160
 
-USE_DISCON_ELEMS = TRUE
+USE_DISCON_ELEMS = FALSE
 
 // model parameters
 
-KAPPA_S_SURFACE = 200.0//156.0 //100.0 //should be around 118 I think//0.094*DX/DT^2 //0.6/DT //0.3125/DT //0.3125/DT // 250.0
+KAPPA_S_SURFACE = 200//5e3//156.0 //100.0 //should be around 118 I think//0.094*DX/DT^2 //0.6/DT //0.3125/DT //0.3125/DT // 250.0
 ETA_S_SURFACE = 1.0
 
 USE_SECOND_VELOCITY_CORRECTION = FALSE
 USE_CURR_MESH_CONFIG = TRUE
 
+
+//use -stokes_ksp_rtol 1.0e-10 -ksp_rtol 1.0e-10
 
 VelocityBcCoefs_0 {
    t_half = 0.5
@@ -126,10 +128,10 @@ IIMethod {
    p_calc_width				   = P_CALC_WIDTH
    wss_calc_width			  = WSS_CALC_WIDTH
    min_ghost_cell_width = 6
-   pressure_jump_fe_family = "L2_LAGRANGE" 
-    velocity_jump_fe_family = "L2_LAGRANGE" 
-   wss_fe_family ="L2_LAGRANGE" 
-   tau_fe_family = "L2_LAGRANGE" 
+   pressure_jump_fe_family = "LAGRANGE" 
+    velocity_jump_fe_family = "LAGRANGE" 
+   wss_fe_family ="LAGRANGE" 
+   tau_fe_family = "LAGRANGE" 
    
     pressure_jump_fe_order 		= "FIRST" 
    velocity_jump_fe_order 		= "FIRST" 

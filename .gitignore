@@ -187,5 +187,4 @@ configure.log.bkp
 RDict.log
 build-*.sh
 objs-*
-*.py
-*.sh
+

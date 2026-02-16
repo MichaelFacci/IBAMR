@@ -50,7 +50,7 @@ CONVECTIVE_FORM            = "ADVECTIVE"            // how to compute the convec
 NORMALIZE_PRESSURE         = FALSE                 // whether to explicitly force the pressure to have mean zero
 CFL_MAX                    = 0.1                   // maximum CFL number
 DT                         = 0.02*CFL_MAX*DX // maximum timestep size
-END_TIME                   = 15.0 //500.0                   // final simulation time
+END_TIME                   = 20.0 //500.0                   // final simulation time
 ERROR_ON_DT_CHANGE         = TRUE                   // whether to emit an error message if the time step size changes
 VORTICITY_TAGGING          = TRUE                   // whether to tag cells for refinement based on vorticity thresholds
 TAG_BUFFER                 = 1                      // size of tag buffer used by grid generation algorithm
@@ -91,26 +91,26 @@ BB = (OMEGA1 - OMEGA2)*R*R*Ro*Ro/(Ro*Ro - R*R)
 U = "0.0"//"(sqrt(X0*X0 + X1*X1)< R ? -OMEGA1*X1 : (sqrt(X0*X0 + X1*X1)> Ro ? 0.0 : -X1*(AA + BB/(X0*X0 + X1*X1))))"
 V = "0.0"//"(sqrt(X0*X0 + X1*X1)< R ? OMEGA1*X0 : (sqrt(X0*X0 + X1*X1)> Ro ? 0.0 : X0*(AA + BB/(X0*X0 + X1*X1))))"
 P = "(sqrt(X0*X0 + X1*X1) <= 0.5 ? 10.0 : 0.0)"//"(sqrt(X0*X0 + X1*X1)< R ? 0.5*OMEGA1*OMEGA1*(X0*X0 + X1*X1) + shift: 0.5*AA*AA*(X0*X0 + X1*X1) - 0.5*BB*BB/(X0*X0 + X1*X1) + 2*AA*BB*log(sqrt(X0*X0 + X1*X1)) )"
-USE_PHONG_NORMALS = TRUE
+USE_PHONG_NORMALS = FALSE
 USE_SMOOTHED_NORMALS = FALSE
 
 USE_BODY_FORCE = FALSE
 USE_SOURCE = TRUE
 TARGET_PRESSURE = 10.0
 PRESSURE_RADIUS = 0.4
-RESISTANCE = 450.0//350.0
+RESISTANCE = 320.0//350.0
 ALPHA = 0.0
 RAMP_TIME = 0.0
 INTEGRAL_GAIN = 0.0//1e-6
 DERIVATIVE_GAIN = 2.0e-3
 
-KAPPA_S = 3*N/2 * 1.0e3//*3500//3200.0 *25.0 //* 25.0 //TARGET_PRESSURE*0.002/DT  //3200 //800 bad for p10
-ETA_S = 0.0/DT
+KAPPA_S = 3*N/2 * 4.0e3//*3500//3200.0 *25.0 //* 25.0 //TARGET_PRESSURE*0.002/DT  //3200 //800 bad for p10
+ETA_S = 0.0
 
 USE_SPECIFIC_Q = FALSE
 SPECIFIC_Q = 312.641888265 
 
-USE_ODE = FALSE //use TRUE for flat normals, FALSE for phong normals, (OK, false is working for flat normals????)
+USE_ODE = TRUE //use TRUE for flat normals, FALSE for phong normals, (OK, false is working for flat normals????)
 TAU = 5*DT
 
 //P = "if(sqrt(X0*X0 + X1*X1)< R, -0.2 + 0.5*omega1*omega1*(X0*X0 + X1*X1), if(sqrt(X0*X0 + X1*X1)> Ro, 0.0,  0.5*AA*AA*(X0*X0 + X1*X1) - 0.5*BB*BB/(X0*X0 + X1*X1) + AA*BB*log(X0*X0 + X1*X1) - 0.5*AA*AA*Ro*Ro + 0.5*BB*BB/(Ro*Ro) - AA*BB*log(Ro*Ro)))"

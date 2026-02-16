@@ -3579,6 +3579,7 @@ IIMethod::computeLagrangianForce(const double data_time)
                         /////////////////////smoothing normal -- Qi Code /////////////
         if (d_use_smoothed_normal)
         {
+            pout << "IIMethod: Entering smoothed normal calculation loop.\n";
             for (auto el_it = el_begin; el_it != el_end; ++el_it)
             {
                 auto elem = *el_it;
@@ -3591,6 +3592,7 @@ IIMethod::computeLagrangianForce(const double data_time)
                 for (unsigned int d = 0; d < NDIM; ++d)
                 {
                     Normal_rhs_e[d].resize(static_cast<int>(Normal_dof_indices[d].size()));
+                    Normal_rhs_e[d].zero(); // <--- THIS WAS MISSING
                 }
                 fe_X->reinit(elem);
                 fe_N->reinit(elem);
